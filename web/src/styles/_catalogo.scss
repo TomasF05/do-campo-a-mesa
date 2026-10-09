@@ -42,3 +42,20 @@
   display: flex; flex-direction: column; gap: .75rem;
   @include a-partir-de(lg) { flex-direction: row; align-items: center; }
 }
+
+$cores-categoria: (
+  horticolas: (#cfe3ca, #335f2f),
+  fruta: (#dce6c3, #4e6b22),
+  mel: (#f3dda3, #86590c),
+  vinho: (#e6d3de, #6e3353),
+  queijo: (#f1e6c4, #7f6420),
+  padaria: (#eadbc0, #7a5427),
+  outros: (#e2cdb9, #6b4123)
+);
+
+@each $nome, $cores in $cores-categoria {
+  .cat-#{$nome} {
+    background: nth($cores, 1);
+    color: nth($cores, 2);
+  }
+}

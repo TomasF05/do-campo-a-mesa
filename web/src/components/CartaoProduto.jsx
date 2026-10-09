@@ -7,7 +7,10 @@ export default function CartaoProduto({ produto, onAdicionar }) {
       {produto.imagemUrl ? (
         <img src={produto.imagemUrl} className="card-img-top" alt={produto.nome} />
       ) : (
-        <div className="cartao-produto__imagem" aria-hidden="true" />
+        <div className={`cartao-produto__imagem cat-${(produto.categoria || 'Outros').normalize(
+            'NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()}`} aria-hidden="true">
+          <span>{produto.nome.charAt(0)}</span>
+        </div>
       )}
       <div className="card-body d-flex flex-column">
         {produto.biologico && <span className="etiqueta-bio">BIO</span>}
