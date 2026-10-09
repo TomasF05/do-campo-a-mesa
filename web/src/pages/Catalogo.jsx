@@ -59,7 +59,8 @@ export default function Catalogo() {
 
       {erro && <div className="alert alert-danger">{erro}</div>}
 
-      <section className="grelha-produtos" aria-label="Produtos">
+      <section className="grelha-produtos" aria-labelledby="titulo-produtos">
+        <h2 id="titulo-produtos" className="visually-hidden">Produtos</h2>
         {produtos.map((p) => (
           <CartaoProduto key={p._id} produto={p}
             onAdicionar={utilizador?.papel === 'comprador' ? () => carrinho.adicionar(p) : undefined} />

@@ -5,7 +5,7 @@ export default function CartaoProduto({ produto, onAdicionar }) {
   return (
     <article className="card cartao-produto h-100">
       {produto.imagemUrl ? (
-        <img src={produto.imagemUrl} className="card-img-top" alt={produto.nome} />
+        <img src={produto.imagemUrl} className="card-img-top" alt={produto.nome} loading="lazy"/>
       ) : (
         <div className={`cartao-produto__imagem cat-${(produto.categoria || 'Outros').normalize(
             'NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()}`} aria-hidden="true">
