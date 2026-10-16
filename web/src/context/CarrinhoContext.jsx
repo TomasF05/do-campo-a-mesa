@@ -1,10 +1,26 @@
 // Estado global do carrinho
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
 const CarrinhoContext = createContext(null);
 
+function lerCarrinho() {
+  try {
+    return JSON.parse(localStorage.getItem('carrinho')) || [];
+  } catch {
+    return [];
+  }
+}
+
 export function CarrinhoProvider({ children }) {
-  const [linhas, setLinhas] = useState([]); // [{ produto, quantidade }]
+  const [linhas, setLinhas] = useState(lerCarrinho);  // [{ produto, quantidade }]
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('carrinho', JSON.stringify(linhas));
+    } catch {
+      // Caso o localStorage não esteja disponível
+    }
+  }, [linhas]);
 
   function adicionar(produto, quantidade = 1) {
     setLinhas((atual) => {
@@ -17,8 +33,27 @@ export function CarrinhoProvider({ children }) {
     });
   }
 
+  function alterarQuantidade(produtoId, quantidade) {
+    setLinhas((atual) => {
+      // Quantidade inferior a 1 remove o produto
+      if (quantidade < 1) {
+        return atual.filter((l) => l.produto._id !== produtoId
+        );
+      }
+
+      return atual.map((l) => l.produto._id === produtoId
+          ? {...l, quantidade} : l
+      );
+    });
+  }
+
   function remover(produtoId) {
     setLinhas((atual) => atual.filter((l) => l.produto._id !== produtoId));
+  }
+
+  // Esvazia completamente o carrinho
+  function esvaziar() {
+    setLinhas([]);
   }
 
   // TODO: alterar quantidade, esvaziar após encomendar, agrupar por produtor
@@ -26,7 +61,7 @@ export function CarrinhoProvider({ children }) {
     () => linhas.reduce((s, l) => s + l.produto.preco * l.quantidade, 0), [linhas]);
 
   return (
-    <CarrinhoContext.Provider value={{ linhas, adicionar, remover, total }}>
+    <CarrinhoContext.Provider value={{ linhas, adicionar, alterarQuantidade, remover, esvaziar, total }}>
       {children}
     </CarrinhoContext.Provider>
   );
