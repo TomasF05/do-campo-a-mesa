@@ -24,8 +24,18 @@ export default function Catalogo() {
         p.nome.toLowerCase().includes(filtro.q.toLowerCase())));
       return;
     }
-    const q = new URLSearchParams(filtro);
-    api(`/products?${q}`).then(setProdutos).catch((e) => setErro(e.message));
+    const t = setTimeout(() => {
+      const q = new URLSearchParams(
+        Object.entries(filtro).filter(([, valor]) => valor !== '' && valor !== false
+          )
+      );
+
+      api(`/products?${q}`).then((dados) => {setProdutos(dados); setErro('');
+        }).catch((e) => setErro(e.message)
+      );
+    }, 300);
+
+    return () => clearTimeout(t);
   }, [filtro]);
 
   const mudar = (campo) => (e) =>
