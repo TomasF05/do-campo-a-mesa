@@ -1,4 +1,5 @@
 // Componente reutilizável: cartão de produto do catálogo
+import { Link } from 'react-router-dom';
 const euro = (v) => v.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' });
 
 export default function CartaoProduto({ produto, onAdicionar }) {
@@ -15,9 +16,15 @@ export default function CartaoProduto({ produto, onAdicionar }) {
       <div className="card-body d-flex flex-column">
         {produto.biologico && <span className="etiqueta-bio">BIO</span>}
         <h3 className="h6 mb-1">{produto.nome}</h3>
+        {produto.produtor?._id ? (
+        <Link to={`/produtores/${produto.produtor._id}`} className="texto-secundario small mb-2">
+          {produto.produtor.nome} ·{' '} {produto.produtor.produtor?.localidade}
+        </Link>
+      ) : (
         <p className="texto-secundario small mb-2">
-          {produto.produtor?.nome} · {produto.produtor?.produtor?.localidade}
+          {produto.produtor?.nome} ·{' '} {produto.produtor?.produtor?.localidade}
         </p>
+      )}
         <p className="preco mt-auto">
           {euro(produto.preco)} <span className="texto-secundario small">/ {produto.unidade}</span>
         </p>
