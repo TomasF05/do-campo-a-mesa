@@ -1,0 +1,62 @@
+[
+  {
+    "_id": "l1",
+    "lote": "200 kg de kiwi Hayward, calibre A",
+    "descricao": "Excedente da colheita de outubro, em caixas de 10 kg.",
+    "quantidade": "200 kg",
+    "precoBase": 200,
+    "incremento": 5,
+    "licitacaoAtual": {
+      "valor": 220
+    },
+    "estado": "ativo",
+    "terminaEm": "2026-12-31T23:59:00.000Z",
+    "produtor": {
+      "_id": "prod1",
+      "nome": "Horta da Ribeira",
+      "produtor": {
+        "localidade": "Ponte de Lima"
+      }
+    }
+  },
+  {
+    "_id": "l2",
+    "lote": "Alvarinho 2025 — lote de 60 garrafas",
+    "descricao": "Lote de produção limitada de Alvarinho 2025.",
+    "quantidade": "60 garrafas",
+    "precoBase": 420,
+    "incremento": 10,
+    "licitacaoAtual": {
+      "valor": 450
+    },
+    "estado": "ativo",
+    "terminaEm": "2026-12-31T23:59:00.000Z",
+    "produtor": {
+      "_id": "prod3",
+      "nome": "Quinta da Lameira",
+      "produtor": {
+        "localidade": "Monção"
+      }
+    }
+  },
+  {
+    "_id": "l3",
+    "lote": "Mel de urze — 40 frascos",
+    "descricao": "Lote de mel de urze artesanal.",
+    "quantidade": "40 frascos",
+    "precoBase": 180,
+    "incremento": 5,
+    "licitacaoAtual": {
+      "valor": 195
+    },
+    "estado": "agendado",
+    "terminaEm": "2026-12-31T23:59:00.000Z",
+    "produtor": {
+      "_id": "prod2",
+      "nome": "Mel do Soajo",
+      "produtor": {
+        "localidade": "Arcos de Valdevez"
+      }
+    }
+  }
+]
