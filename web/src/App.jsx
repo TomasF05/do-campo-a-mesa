@@ -14,6 +14,8 @@ import PainelProdutor from './pages/produtor/Painel.jsx';
 import NovoLeilao from './pages/produtor/NovoLeilao.jsx';
 import PainelAdmin from './pages/admin/Painel.jsx';
 import NaoEncontrado from './pages/NaoEncontrado.jsx';
+import ProdutosProdutor from './pages/produtor/Produtos.jsx';
+import { USAR_DADOS_SIMULADOS } from './api/client.js';
 
 export default function App() {
   return (
@@ -22,6 +24,7 @@ export default function App() {
       Saltar para o conteúdo
     </a>
         <Navbar />
+      {USAR_DADOS_SIMULADOS && <div className="aviso-demo"><div className="container-xl">Demonstração local · dados e ações guardados apenas neste browser.</div></div>}
       <main id="conteudo" className="container-xl py-4">
         <Routes>
           {/* Visitante */}
@@ -45,6 +48,7 @@ export default function App() {
           {/* Produtor */}
           <Route element={<RotaProtegida papeis={['produtor']} />}>
             <Route path="/produtor" element={<PainelProdutor />} />
+            <Route path="/produtor/produtos" element={<ProdutosProdutor />} />
             <Route path="/produtor/leiloes/novo" element={<NovoLeilao />} />
           </Route>
 
@@ -56,6 +60,7 @@ export default function App() {
           <Route path="*" element={<NaoEncontrado />} />
         </Routes>
       </main>
+      <footer className="container-xl py-4 texto-secundario small">Do Campo à Mesa · Produtores locais do Alto Minho</footer>
     </>
   );
 }

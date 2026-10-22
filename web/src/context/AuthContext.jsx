@@ -1,25 +1,31 @@
 // Estado global da sessão (utilizador + token)
 import { createContext, useContext, useState } from 'react';
+import { api, USAR_DADOS_SIMULADOS } from '../api/client.js';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [sessao, setSessao] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('sessao')) || null; } catch { return null; }
+    try {
+      const s = JSON.parse(localStorage.getItem('sessao'));
+      if (!s?.utilizador || !['comprador', 'produtor', 'admin'].includes(s.utilizador.papel)) return null;
+      return USAR_DADOS_SIMULADOS ? (s.simulada ? s : null) : (s.token && !s.simulada ? s : null);
+    } catch { return null; }
   });
 
-  // TODO (Passo 6): chamar POST /api/auth/login e guardar { token, utilizador }
-  async function entrar(email, password) { // eslint-disable-line no-unused-vars
-    throw new Error('Login por implementar');
+  async function entrar(email, password) {
+    const nova = await api('/auth/login', { metodo: 'POST', corpo: { email, password } });
+    guardarSessao(nova);
+    return nova.utilizador;
   }
 
   function sair() {
-    localStorage.removeItem('sessao');
+    try { localStorage.removeItem('sessao'); } catch { /* armazenamento indisponível */ }
     setSessao(null);
   }
 
   function guardarSessao(nova) {
-    localStorage.setItem('sessao', JSON.stringify(nova));
+    try { localStorage.setItem('sessao', JSON.stringify(nova)); } catch { /* sessão em memória */ }
     setSessao(nova);
   }
 

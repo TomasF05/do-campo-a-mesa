@@ -1,0 +1,6 @@
+[
+  { "_id": "admin1", "nome": "Administrador", "email": "admin@exemplo.pt", "papel": "admin" },
+  { "_id": "prod1", "nome": "Horta da Ribeira", "email": "horta@exemplo.pt", "papel": "produtor" },
+  { "_id": "prod2", "nome": "Mel do Soajo", "email": "mel@exemplo.pt", "papel": "produtor" },
+  { "_id": "comprador1", "nome": "Tasca do Largo", "email": "tasca@exemplo.pt", "papel": "comprador" }
+]

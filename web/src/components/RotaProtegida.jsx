@@ -6,7 +6,7 @@ export default function RotaProtegida({ papeis = [] }) {
   const { utilizador } = useAuth();
   const location = useLocation();
 
-  if (!utilizador) return <Navigate to="/login" state={{ de: location.pathname }} replace />;
+  if (!utilizador) return <Navigate to="/login" state={{ de: location.pathname + location.search + location.hash }} replace />;
   if (papeis.length && !papeis.includes(utilizador.papel)) return <Navigate to="/" replace />;
   return <Outlet />;
 }
