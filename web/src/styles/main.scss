@@ -3,11 +3,14 @@
 @import 'bootstrap/scss/bootstrap';
 @import 'mixins';
 @import 'catalogo';
+@import 'leiloes';
+@import 'paineis';
 
-.barra-topo { background: #fff; border-bottom: 1px solid $linha; }
+.barra-topo { background: $superficie; border-bottom: 1px solid $linha; }
 .marca { font-family: Georgia, serif; font-weight: 700; color: $tinta; }
 .texto-secundario { color: $texto-secundario; }
 
+.destaque { display: grid; gap: 1.5rem; align-items: center; @include a-partir-de(lg) { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } }
 .destaque h1 {
   font-family: Georgia, serif;
   font-size: 2rem;
@@ -15,13 +18,6 @@
 }
 
 .formulario-estreito { max-width: 28rem; margin-inline: auto; }
-
-// Sala de leilão: coluna única no telemóvel, duas colunas a partir de lg
-.sala-leilao {
-  display: grid; gap: 1.5rem;
-  @include a-partir-de(lg) { grid-template-columns: 1fr 22rem; }
-  .valor-atual { font-size: 2.25rem; font-weight: 700; }
-}
 
 .estado-encomenda {
   display: flex; justify-content: space-between; list-style: none; padding: 0; margin: 0;
@@ -37,3 +33,10 @@
   background: rgba($terracota, .06);
   margin-bottom: 1rem;
 }
+
+.aviso-demo { padding: .5rem 0; background: rgba($verde, .1); color: $verde-escuro; font-size: .875rem; }
+main { min-height: 60vh; }
+:focus-visible { outline: 3px solid $terracota; outline-offset: 3px; }
+.visually-hidden-focusable { z-index: 1100; }
+footer { border-top: 1px solid $linha; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto !important; } }

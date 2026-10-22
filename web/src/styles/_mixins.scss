@@ -9,7 +9,7 @@
 }
 
 @mixin cartao {
-  background: #fff;
+  background: $superficie;
   border: 1px solid $linha;
   border-radius: $border-radius-lg;
 }

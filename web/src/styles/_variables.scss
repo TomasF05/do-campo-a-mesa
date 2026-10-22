@@ -6,10 +6,12 @@ $fundo: #F6F2EA;
 $tinta: #1F2A1E;
 $texto-secundario: #5A6354;
 $linha: #E3DACA;
+$superficie: #fff;
 
 // Variáveis do Bootstrap
 $primary: $verde;
 $success: $verde;
+$secondary: $texto-secundario;
 $danger: #a3281c;
 
 $body-bg: $fundo;
@@ -21,6 +23,7 @@ $border-radius-sm: .5rem;
 $border-radius-lg: 1rem;
 
 $card-border-color: $linha;
+$card-bg: $superficie;
 
 $font-family-sans-serif:
   "Segoe UI",
