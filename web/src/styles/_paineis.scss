@@ -1,0 +1,15 @@
+.grelha-indicadores, .lista-encomendas, .formulario-grelha { display: grid; gap: 1rem; }
+.grelha-indicadores {
+  @include a-partir-de(md) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  @include a-partir-de(lg) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  @include a-partir-de(xl) { gap: 1.5rem; }
+}
+.formulario-grelha { @include a-partir-de(md) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.lista-encomendas { @include a-partir-de(lg) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.painel-colunas {
+  display: grid; gap: 1.5rem; align-items: start;
+  > * { min-width: 0; }
+  @include a-partir-de(lg) { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+  @include a-partir-de(xl) { gap: 2rem; }
+}
+.estado-encomenda { flex-wrap: wrap; gap: .5rem 1rem; font-size: .875rem; }
