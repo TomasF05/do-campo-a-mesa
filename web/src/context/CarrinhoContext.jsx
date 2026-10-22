@@ -5,7 +5,8 @@ const CarrinhoContext = createContext(null);
 
 function lerCarrinho() {
   try {
-    return JSON.parse(localStorage.getItem('carrinho')) || [];
+    const lista = JSON.parse(localStorage.getItem('carrinho'));
+    return Array.isArray(lista) ? lista.filter((l) => l?.produto?._id && Number.isFinite(l.produto.preco) && Number.isInteger(l.quantidade) && l.quantidade > 0) : [];
   } catch {
     return [];
   }
@@ -23,17 +24,19 @@ export function CarrinhoProvider({ children }) {
   }, [linhas]);
 
   function adicionar(produto, quantidade = 1) {
+    if (!Number.isInteger(quantidade) || quantidade < 1 || produto.stock === 0) return;
     setLinhas((atual) => {
       const existe = atual.find((l) => l.produto._id === produto._id);
       if (existe) {
         return atual.map((l) => l.produto._id === produto._id
-          ? { ...l, quantidade: l.quantidade + quantidade } : l);
+          ? { ...l, quantidade: Math.min(l.quantidade + quantidade, produto.stock ?? Infinity) } : l);
       }
-      return [...atual, { produto, quantidade }];
+      return [...atual, { produto, quantidade: Math.min(quantidade, produto.stock ?? Infinity) }];
     });
   }
 
   function alterarQuantidade(produtoId, quantidade) {
+    if (!Number.isInteger(quantidade)) return;
     setLinhas((atual) => {
       // Quantidade inferior a 1 remove o produto
       if (quantidade < 1) {
@@ -42,7 +45,7 @@ export function CarrinhoProvider({ children }) {
       }
 
       return atual.map((l) => l.produto._id === produtoId
-          ? {...l, quantidade} : l
+          ? {...l, quantidade: Math.min(quantidade, l.produto.stock ?? Infinity)} : l
       );
     });
   }
@@ -56,7 +59,6 @@ export function CarrinhoProvider({ children }) {
     setLinhas([]);
   }
 
-  // TODO: alterar quantidade, esvaziar após encomendar, agrupar por produtor
   const total = useMemo(
     () => linhas.reduce((s, l) => s + l.produto.preco * l.quantidade, 0), [linhas]);
 

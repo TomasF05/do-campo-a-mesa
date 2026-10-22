@@ -6,7 +6,7 @@ export default function EstadoEncomenda({ estado }) {
   return (
     <ol className="estado-encomenda" aria-label={`Estado: ${estado}`}>
       {ESTADOS.map((e, i) => (
-        <li key={e} className={i < indice ? 'feito' : i === indice ? 'atual' : ''}>{e}</li>
+        <li key={e} aria-current={i === indice ? 'step' : undefined} className={i < indice ? 'feito' : i === indice ? 'atual' : ''}>{e}{i === indice && <span className="visually-hidden"> (estado atual)</span>}</li>
       ))}
     </ol>
   );

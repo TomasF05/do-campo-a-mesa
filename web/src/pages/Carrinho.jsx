@@ -1,12 +1,13 @@
 import { useCarrinho } from '../context/CarrinhoContext.jsx';
-import PorImplementar from '../components/PorImplementar.jsx';
+import FinalizarCarrinho from '../components/FinalizarCarrinho.jsx';
+import { Link } from 'react-router-dom';
 
 export default function Carrinho() {
-  const { linhas, alterarQuantidade, remover, total } = useCarrinho();
+  const { linhas, alterarQuantidade, remover, esvaziar, total } = useCarrinho();
   return (
     <>
       <h1>Carrinho</h1>
-      {linhas.length === 0 ? <p>O carrinho está vazio.</p> : (
+      {linhas.length === 0 ? <p>O carrinho está vazio. <Link to="/">Explorar produtos</Link></p> : (
         <ul className="list-group mb-3">
           {linhas.map(({ produto, quantidade }) => (
             <li
@@ -49,6 +50,7 @@ export default function Carrinho() {
                       )
                     }
                     aria-label={`Aumentar quantidade de ${produto.nome}`}
+                    disabled={Number.isFinite(produto.stock) && quantidade >= produto.stock}
                   >
                     +
                   </button>
@@ -67,9 +69,8 @@ export default function Carrinho() {
         </ul>
       )}
       <p className="fw-bold">Total: {total.toFixed(2)} €</p>
-      <PorImplementar passo={3}>
-        escolher levantamento ou entrega e submeter com <code>POST /api/orders</code> (uma encomenda por produtor).
-      </PorImplementar>
+      {linhas.length > 0 && <button className="btn btn-outline-danger mb-3" type="button" onClick={esvaziar}>Esvaziar carrinho</button>}
+      <FinalizarCarrinho />
     </>
   );
 }
