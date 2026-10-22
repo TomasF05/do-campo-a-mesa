@@ -1,33 +1,37 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { api } from '../api/client.js';
+import { api, USAR_DADOS_SIMULADOS } from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 
 export function useApi(caminho) {
-  const { token } = useAuth();
+  const { token, utilizador } = useAuth();
 
   const [dados, setDados] = useState(null);
   const [erro, setErro] = useState('');
-  const [aCarregar, setACarregar] = useState(true);
+  const [aCarregar, setACarregar] = useState(Boolean(caminho));
+  const pedido = useRef(null);
 
   const recarregar = useCallback(async () => {
-    if (!caminho) return;
-
+    pedido.current?.abort();
+    const controlador = new AbortController();
+    pedido.current = controlador;
+    if (!caminho) { setDados(null); setErro(''); setACarregar(false); return; }
+    setACarregar(true); setErro('');
     try {
-      const resposta = await api(caminho, { token });
-
-      setDados(resposta);
-      setErro('');
+      const resposta = await api(caminho, { token, utilizador, signal: controlador.signal });
+      if (!controlador.signal.aborted) setDados(resposta);
     } catch (err) {
-      setErro(err.message);
+      if (!controlador.signal.aborted) { setErro(err.message); setDados(null); }
     } finally {
-      setACarregar(false);
+      if (!controlador.signal.aborted) setACarregar(false);
     }
-  }, [caminho, token]);
+  }, [caminho, token, utilizador]);
 
   useEffect(() => {
-    setACarregar(true);
+    setDados(null);
     recarregar();
+    if (USAR_DADOS_SIMULADOS) window.addEventListener('dados-simulados-alterados', recarregar);
+    return () => { pedido.current?.abort(); window.removeEventListener('dados-simulados-alterados', recarregar); };
   }, [recarregar]);
 
   return { dados, erro, aCarregar, recarregar, setDados };

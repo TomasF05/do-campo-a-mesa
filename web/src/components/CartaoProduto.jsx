@@ -2,11 +2,11 @@
 import { Link } from 'react-router-dom';
 const euro = (v) => v.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' });
 
-export default function CartaoProduto({ produto, onAdicionar }) {
+export default function CartaoProduto({ produto, onAdicionar, className = 'h-100' }) {
   return (
-    <article className="card cartao-produto h-100">
+    <article className={`card cartao-produto ${className}`}>
       {produto.imagemUrl ? (
-        <img src={produto.imagemUrl} className="card-img-top" alt={produto.nome} loading="lazy"/>
+        <img src={produto.imagemUrl} className="cartao-produto__foto" alt={produto.nome} loading="lazy"/>
       ) : (
         <div className={`cartao-produto__imagem cat-${(produto.categoria || 'Outros').normalize(
             'NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()}`} aria-hidden="true">
@@ -15,6 +15,7 @@ export default function CartaoProduto({ produto, onAdicionar }) {
       )}
       <div className="card-body d-flex flex-column">
         {produto.biologico && <span className="etiqueta-bio">BIO</span>}
+        {produto.stock === 0 && <span className="etiqueta-esgotado">Esgotado</span>}
         <h3 className="h6 mb-1">{produto.nome}</h3>
         {produto.produtor?._id ? (
         <Link to={`/produtores/${produto.produtor._id}`} className="texto-secundario small mb-2">
@@ -29,7 +30,7 @@ export default function CartaoProduto({ produto, onAdicionar }) {
           {euro(produto.preco)} <span className="texto-secundario small">/ {produto.unidade}</span>
         </p>
         {onAdicionar && (
-          <button type="button" className="btn btn-success w-100" onClick={onAdicionar}>
+          <button type="button" className="btn btn-success w-100" onClick={onAdicionar} disabled={produto.stock === 0}>
             Adicionar ao carrinho
           </button>
         )}
