@@ -13,4 +13,9 @@ const reviewSchema = new Schema({
   visivel: { type: Boolean, default: true }
 }, { timestamps: true });
 
+// Garante o 409 mesmo quando duas avaliações iguais chegam em simultâneo.
+reviewSchema.index({ autor: 1, encomenda: 1, produto: 1 }, {
+  unique: true, partialFilterExpression: { encomenda: { $type: 'objectId' } }
+});
+
 module.exports = model('Review', reviewSchema);
