@@ -36,7 +36,7 @@ router.get('/:id', a(async (req, res) => {
 
 // POST /api/auctions  (produtor)  -> 201
 router.post('/', auth('produtor'), produtorValidado, a(async (req, res) => {
-  const dados = campos(req.body, ['produto', 'lote', 'quantidade', 'precoBase', 'incremento', 'iniciaEm', 'terminaEm', 'duracao']);
+  const dados = campos(req.body, ['produto', 'lote', 'descricao', 'quantidade', 'precoBase', 'incremento', 'iniciaEm', 'terminaEm', 'duracao']);
   numero(dados.precoBase, 'Preço base'); numero(dados.incremento, 'Incremento', 0.01);
   if (dados.produto) {
     id(dados.produto);
@@ -51,7 +51,7 @@ router.post('/', auth('produtor'), produtorValidado, a(async (req, res) => {
   }
   if (!Number.isFinite(inicio) || !Number.isFinite(fim) || fim <= inicio || fim <= Date.now() || !Number.isFinite(new Date(fim).getTime())) throw erro(400, 'Datas do leilão inválidas');
   const leilao = await Auction.create({
-    ...campos(dados, ['produto', 'lote', 'quantidade', 'precoBase', 'incremento']),
+    ...campos(dados, ['produto', 'lote', 'descricao', 'quantidade', 'precoBase', 'incremento']),
     produtor: req.user.id, iniciaEm: new Date(inicio), terminaEm: new Date(fim),
     licitacaoAtual: { valor: dados.precoBase }, estado: inicio > Date.now() ? 'agendado' : 'ativo'
   });

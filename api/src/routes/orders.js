@@ -12,7 +12,6 @@ const POPULATE = [
   { path: 'produtor', select: 'nome produtor.localidade' },
   { path: 'comprador', select: 'nome' }
 ];
-const comTotal = (o) => ({ ...o.toObject(), total: Number(o.linhas.reduce((s, l) => s + l.precoUnit * l.quantidade, 0).toFixed(2)) });
 const doUtilizador = (u) => u.papel === 'produtor' ? { produtor: u.id } : { comprador: u.id };
 
 // POST /api/orders  (comprador)  -> 201
@@ -51,13 +50,13 @@ router.post('/', auth('comprador'), a(async (req, res) => {
       reservas.push({ id: p._id, q });
       const chave = p.produtor.toString();
       if (!porProdutor.has(chave)) porProdutor.set(chave, []);
-      porProdutor.get(chave).push({ produto: p._id, nome: p.nome, precoUnit: p.preco, quantidade: q });
+      porProdutor.get(chave).push({ produto: p._id, nome: p.nome, precoUnit: p.preco, unidade: p.unidade, quantidade: q });
     }
     novas.push(...[...porProdutor].map(([produtor, linhas]) => ({
       _id: new mongoose.Types.ObjectId(), comprador: req.user.id, produtor, linhas, entrega
     })));
     const criadas = await Order.insertMany(novas);
-    res.status(201).location('/api/orders').json(criadas.map(comTotal));
+    res.status(201).location('/api/orders').json(criadas);
   } catch (err) {
     // Compensação do guia: não deixar encomendas parciais nem stock reservado.
     if (novas.length) await Order.deleteMany({ _id: { $in: novas.map((o) => o._id) } });
@@ -69,14 +68,14 @@ router.post('/', auth('comprador'), a(async (req, res) => {
 // GET /api/orders  -> 200 [encomendas do utilizador: como comprador ou como produtor]
 router.get('/', auth(), a(async (req, res) => {
   const lista = await Order.find(doUtilizador(req.user)).populate(POPULATE).sort({ createdAt: -1 });
-  res.json(lista.map(comTotal));
+  res.json(lista);
 }));
 
 // GET /api/orders/:id  -> 200 | 404
 router.get('/:id', auth(), a(async (req, res) => {
   const o = await Order.findOne({ _id: req.params.id, ...doUtilizador(req.user) }).populate(POPULATE);
   if (!o) throw erro(404, 'Encomenda não encontrada');
-  res.json(comTotal(o));
+  res.json(o);
 }));
 
 // PATCH /api/orders/:id/estado  (produtor)  -> 200
@@ -95,7 +94,7 @@ router.patch('/:id/estado', auth('produtor'), a(async (req, res) => {
     const existe = await Order.exists({ _id: req.params.id, produtor: req.user.id });
     throw erro(existe ? 409 : 404, existe ? 'O estado só pode avançar' : 'Encomenda não encontrada');
   }
-  res.json(comTotal(o));
+  res.json(o);
 }));
 
 module.exports = router;

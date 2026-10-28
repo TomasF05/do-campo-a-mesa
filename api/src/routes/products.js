@@ -11,7 +11,7 @@ const produtorValidado = require('../middleware/produtorValidado');
 const { a, erro, id, parametroId, campos, query, numero, escaparRegex } = require('../utils/http');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
-const CAMPOS = ['nome', 'categoria', 'preco', 'unidade', 'stock', 'biologico', 'epocas'];
+const CAMPOS = ['nome', 'descricao', 'categoria', 'preco', 'unidade', 'stock', 'biologico', 'epocas'];
 const POPULATE = 'nome produtor.localidade produtor.nomeExploracao';
 const ORDENACAO = {
   nome: { nome: 1, _id: 1 }, recentes: { createdAt: -1, _id: -1 },
