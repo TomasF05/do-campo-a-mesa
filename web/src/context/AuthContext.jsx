@@ -14,11 +14,14 @@ export function AuthProvider({ children }) {
   });
   const sessaoAtual = useRef(sessao);
   const [aCarregar, setACarregar] = useState(!USAR_DADOS_SIMULADOS && Boolean(sessao?.token));
+  const [tokenValidado, setTokenValidado] = useState(null);
 
   const guardarSessao = useCallback((nova) => {
     const normalizada = nova ? {
       ...nova, utilizador: { ...nova.utilizador, _id: nova.utilizador._id || nova.utilizador.id }
     } : null;
+    if (!normalizada || normalizada.token !== sessaoAtual.current?.token) setTokenValidado(null);
+    if (!normalizada) setACarregar(false);
     sessaoAtual.current = normalizada;
     setSessao(normalizada);
     try {
@@ -34,7 +37,10 @@ export function AuthProvider({ children }) {
     if (USAR_DADOS_SIMULADOS || !atual?.token) return;
     try {
       const utilizador = await api('/auth/eu', { token: atual.token });
-      if (sessaoAtual.current?.token === atual.token) guardarSessao({ ...atual, utilizador });
+      if (sessaoAtual.current?.token === atual.token) {
+        guardarSessao({ ...atual, utilizador });
+        setTokenValidado(atual.token);
+      }
     } catch (err) {
       if (err.status === 401 && sessaoAtual.current?.token === atual.token) sair();
     }
@@ -51,6 +57,8 @@ export function AuthProvider({ children }) {
   async function entrar(email, password) {
     const nova = await api('/auth/login', { metodo: 'POST', corpo: { email, password } });
     guardarSessao(nova);
+    setTokenValidado(nova.token || null);
+    setACarregar(false);
     return nova.utilizador;
   }
 
@@ -58,7 +66,8 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       utilizador: sessao?.utilizador || null,
       token: sessao?.token || null,
-      entrar, sair, guardarSessao, atualizar, aCarregar
+      entrar, sair, guardarSessao, atualizar, aCarregar,
+      sessaoValidada: USAR_DADOS_SIMULADOS ? Boolean(sessao?.utilizador) : Boolean(sessao?.token && tokenValidado === sessao.token)
     }}>
       {children}
     </AuthContext.Provider>
