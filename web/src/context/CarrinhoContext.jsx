@@ -1,11 +1,13 @@
 // Estado global do carrinho
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { USAR_DADOS_SIMULADOS } from '../api/client.js';
 
 const CarrinhoContext = createContext(null);
+const CHAVE = USAR_DADOS_SIMULADOS ? 'carrinho' : 'carrinho-api';
 
 function lerCarrinho() {
   try {
-    const lista = JSON.parse(localStorage.getItem('carrinho'));
+    const lista = JSON.parse(localStorage.getItem(CHAVE));
     return Array.isArray(lista) ? lista.filter((l) => l?.produto?._id && Number.isFinite(l.produto.preco) && Number.isInteger(l.quantidade) && l.quantidade > 0) : [];
   } catch {
     return [];
@@ -17,7 +19,7 @@ export function CarrinhoProvider({ children }) {
 
   useEffect(() => {
     try {
-      localStorage.setItem('carrinho', JSON.stringify(linhas));
+      localStorage.setItem(CHAVE, JSON.stringify(linhas));
     } catch {
       // Caso o localStorage não esteja disponível
     }

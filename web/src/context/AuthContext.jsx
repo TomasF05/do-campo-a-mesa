@@ -1,5 +1,5 @@
 // Estado global da sessão (utilizador + token)
-import { createContext, useContext, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { api, USAR_DADOS_SIMULADOS } from '../api/client.js';
 
 const AuthContext = createContext(null);
@@ -12,6 +12,41 @@ export function AuthProvider({ children }) {
       return USAR_DADOS_SIMULADOS ? (s.simulada ? s : null) : (s.token && !s.simulada ? s : null);
     } catch { return null; }
   });
+  const sessaoAtual = useRef(sessao);
+  const [aCarregar, setACarregar] = useState(!USAR_DADOS_SIMULADOS && Boolean(sessao?.token));
+
+  const guardarSessao = useCallback((nova) => {
+    const normalizada = nova ? {
+      ...nova, utilizador: { ...nova.utilizador, _id: nova.utilizador._id || nova.utilizador.id }
+    } : null;
+    sessaoAtual.current = normalizada;
+    setSessao(normalizada);
+    try {
+      if (normalizada) localStorage.setItem('sessao', JSON.stringify(normalizada));
+      else localStorage.removeItem('sessao');
+    } catch { /* sessão em memória */ }
+  }, []);
+
+  const sair = useCallback(() => guardarSessao(null), [guardarSessao]);
+
+  const atualizar = useCallback(async () => {
+    const atual = sessaoAtual.current;
+    if (USAR_DADOS_SIMULADOS || !atual?.token) return;
+    try {
+      const utilizador = await api('/auth/eu', { token: atual.token });
+      if (sessaoAtual.current?.token === atual.token) guardarSessao({ ...atual, utilizador });
+    } catch (err) {
+      if (err.status === 401 && sessaoAtual.current?.token === atual.token) sair();
+    }
+  }, [guardarSessao, sair]);
+
+  useEffect(() => {
+    let montado = true;
+    const expirar = (e) => { if (e.detail?.token === sessaoAtual.current?.token) sair(); };
+    window.addEventListener('sessao-expirada', expirar);
+    atualizar().finally(() => { if (montado) setACarregar(false); });
+    return () => { montado = false; window.removeEventListener('sessao-expirada', expirar); };
+  }, [atualizar, sair]);
 
   async function entrar(email, password) {
     const nova = await api('/auth/login', { metodo: 'POST', corpo: { email, password } });
@@ -19,21 +54,11 @@ export function AuthProvider({ children }) {
     return nova.utilizador;
   }
 
-  function sair() {
-    try { localStorage.removeItem('sessao'); } catch { /* armazenamento indisponível */ }
-    setSessao(null);
-  }
-
-  function guardarSessao(nova) {
-    try { localStorage.setItem('sessao', JSON.stringify(nova)); } catch { /* sessão em memória */ }
-    setSessao(nova);
-  }
-
   return (
     <AuthContext.Provider value={{
       utilizador: sessao?.utilizador || null,
       token: sessao?.token || null,
-      entrar, sair, guardarSessao
+      entrar, sair, guardarSessao, atualizar, aCarregar
     }}>
       {children}
     </AuthContext.Provider>

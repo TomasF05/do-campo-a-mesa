@@ -11,7 +11,7 @@ servers:
 security: []
 tags:
   - { name: Serviço, description: Estado da API }
-  - { name: Autenticação, description: Contratos previstos para o Passo 6 }
+  - { name: Autenticação, description: Registo e autenticação com JWT }
   - { name: Produtos, description: Catálogo e gestão dos produtos }
   - { name: Produtores, description: Páginas públicas dos produtores validados }
   - { name: Encomendas, description: Compras e acompanhamento dos estados }
@@ -42,10 +42,14 @@ paths:
     post:
       tags: [Autenticação]
       operationId: registarUtilizador
-      summary: Registar comprador ou produtor (Passo 6)
+      summary: Registar comprador ou produtor
       description: |
-        Ainda devolve 501. O contrato abaixo descreve o registo previsto para o Passo 6.
-        Um produtor ficará por validar pelo administrador. Não permite criar administradores.
+        Cria uma conta com password guardada como hash bcrypt de custo 12.
+        Normaliza o email para minúsculas e retira os espaços nas extremidades.
+        O papel é comprador quando omitido; não permite criar administradores.
+        Um produtor precisa de nomeExploracao e localidade e fica sempre com validado=false,
+        mesmo que envie outro valor. Os campos não permitidos são ignorados.
+        Devolve apenas o identificador da conta; é necessário fazer login para obter o JWT.
       requestBody:
         required: true
         content:
@@ -53,7 +57,7 @@ paths:
             schema: { $ref: '#/components/schemas/RegistoInput' }
       responses:
         '201':
-          description: Utilizador criado (resposta prevista para o Passo 6)
+          description: Utilizador criado
           content:
             application/json:
               schema:
@@ -61,17 +65,40 @@ paths:
                 required: [id]
                 properties:
                   id: { $ref: '#/components/schemas/ObjectId' }
-        '400': { $ref: '#/components/responses/DadosInvalidos' }
-        '409': { $ref: '#/components/responses/Conflito' }
+              example: { id: 66f5a1c2e4b0a1b2c3d4e5f6 }
+        '400':
+          description: Dados inválidos, password fora dos limites, papel não permitido ou dados do produtor em falta
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              examples:
+                password:
+                  value: { erro: A password deve ter pelo menos 8 caracteres e no máximo 72 bytes }
+                papel:
+                  value: { erro: Papel inválido }
+                produtor:
+                  value: { erro: Indique o nome da exploração e a localidade }
+        '409':
+          description: Já existe uma conta com o email normalizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: Já existe um registo com esses dados }
+        '413': { $ref: '#/components/responses/CorpoDemasiadoGrande' }
         '500': { $ref: '#/components/responses/ErroInterno' }
-        '501': { $ref: '#/components/responses/PorImplementar' }
 
   /auth/login:
     post:
       tags: [Autenticação]
       operationId: autenticarUtilizador
-      summary: Iniciar sessão (Passo 6)
-      description: Ainda devolve 501. A emissão de JWT e as respostas 200/401 serão implementadas no Passo 6.
+      summary: Iniciar sessão
+      description: |
+        Normaliza o email e compara a password com o hash bcrypt guardado.
+        Um email desconhecido e uma password incorreta devolvem a mesma mensagem 401.
+        Devolve um JWT assinado com HS256 e os dados públicos do utilizador, sem passwordHash.
+        O JWT contém id, papel e nome, além de iat e exp. Expira em duas horas por omissão,
+        com duração configurável em JWT_EXPIRES_IN.
+        Produtores por validar podem iniciar sessão; a criação de produtos e leilões exige aprovação.
       requestBody:
         required: true
         content:
@@ -79,31 +106,43 @@ paths:
             schema: { $ref: '#/components/schemas/LoginInput' }
       responses:
         '200':
-          description: Sessão iniciada (resposta prevista para o Passo 6)
+          description: Sessão iniciada
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Sessao' }
-        '400': { $ref: '#/components/responses/DadosInvalidos' }
-        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '400':
+          description: Email ou password ausentes, vazios ou com tipo inválido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: Indique o email e a password }
+        '401':
+          description: Email desconhecido ou password incorreta; também rejeita passwords com mais de 72 bytes
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: Credenciais inválidas }
+        '413': { $ref: '#/components/responses/CorpoDemasiadoGrande' }
         '500': { $ref: '#/components/responses/ErroInterno' }
-        '501': { $ref: '#/components/responses/PorImplementar' }
 
   /auth/eu:
     get:
       tags: [Autenticação]
       operationId: consultarSessao
-      summary: Consultar o utilizador autenticado (Passo 6)
-      description: Atualmente devolve 401 sem JWT válido e 501 com JWT válido. A resposta 200 fica para o Passo 6.
+      summary: Consultar o utilizador autenticado
+      description: |
+        Exige JWT válido de qualquer papel. Consulta os dados atuais da conta na base de dados,
+        incluindo a validação do produtor, e devolve o formato público com id, sem passwordHash.
+        Devolve 401 quando o token é inválido/expirado ou a conta já não existe.
       security: [{ bearerAuth: [] }]
       responses:
         '200':
-          description: Utilizador autenticado (resposta prevista para o Passo 6)
+          description: Dados atuais do utilizador autenticado
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/User' }
+              schema: { $ref: '#/components/schemas/UserPublico' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '500': { $ref: '#/components/responses/ErroInterno' }
-        '501': { $ref: '#/components/responses/PorImplementar' }
 
   /products:
     get:
@@ -653,7 +692,11 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: JWT válido; escreva apenas o token no botão Authorize.
+      description: |
+        Obtenha o JWT em POST /auth/login e escreva apenas o token no botão Authorize.
+        O Swagger envia Authorization com o esquema Bearer.
+        O servidor exige assinatura HS256 válida, expiração e claims id/papel válidos.
+        Um token inválido ou expirado devolve 401; um papel sem permissão devolve 403.
   parameters:
     Id:
       name: id
@@ -683,7 +726,7 @@ components:
           schema: { $ref: '#/components/schemas/Erro' }
           example: { erro: Dados inválidos, detalhes: { categoria: 'Path `categoria` is required.' } }
     NaoAutenticado:
-      description: JWT em falta/inválido ou, no login previsto para o Passo 6, credenciais inválidas
+      description: JWT em falta, inválido ou expirado; em /auth/eu também ocorre quando a conta já não existe
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Erro' }
@@ -701,7 +744,7 @@ components:
           schema: { $ref: '#/components/schemas/Erro' }
           example: { erro: Recurso não encontrado }
     Conflito:
-      description: Stock insuficiente, estado sem avanço, avaliação duplicada ou encomenda ainda não entregue; email repetido no registo previsto para o Passo 6
+      description: Stock insuficiente, estado sem avanço, avaliação duplicada ou encomenda ainda não entregue
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Erro' }
@@ -712,18 +755,12 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Erro' }
           example: { erro: Erro interno }
-    PorImplementar:
-      description: Operação de autenticação ainda por implementar no Passo 6
+    CorpoDemasiadoGrande:
+      description: O corpo JSON excede o limite de 1 MB
       content:
         application/json:
-          schema:
-            allOf:
-              - { $ref: '#/components/schemas/Erro' }
-              - type: object
-                properties:
-                  endpoint: { type: string }
-                  descricao: { type: string }
-          example: { erro: Por implementar, endpoint: POST /api/auth/login, descricao: Autenticar e devolver JWT }
+          schema: { $ref: '#/components/schemas/Erro' }
+          example: { erro: request entity too large }
     SemConteudo:
       description: Operação concluída, sem corpo de resposta
     Produto:
@@ -792,28 +829,66 @@ components:
         - type: object
           nullable: true
           enum: [null]
+    UserPublico:
+      description: |
+        Formato devolvido pelo login e por /auth/eu. Usa id e inclui o perfil produtor apenas
+        para contas com esse papel. Nunca inclui password nem passwordHash.
+      allOf:
+        - { $ref: '#/components/schemas/User' }
+        - type: object
+          required: [id, nome, email, papel]
+      example:
+        id: 66f5a1c2e4b0a1b2c3d4e5f6
+        nome: Horta da Ribeira
+        email: horta@exemplo.pt
+        papel: produtor
+        produtor:
+          nomeExploracao: Horta da Ribeira
+          localidade: Ponte de Lima
+          validado: true
     RegistoInput:
       type: object
       required: [nome, email, password]
-      description: Contrato previsto para o Passo 6; os dados da exploração são necessários para produtores.
+      description: Nome e email são normalizados; o perfil da exploração só é usado quando papel=produtor.
+      oneOf:
+        - properties:
+            papel: { type: string, enum: [comprador] }
+        - required: [papel, produtor]
+          properties:
+            papel: { type: string, enum: [produtor] }
+            produtor: { $ref: '#/components/schemas/ProdutorRegistoInput' }
       properties:
-        nome: { type: string, minLength: 1, maxLength: 100, example: Maria Silva }
+        nome: { type: string, minLength: 1, maxLength: 100, pattern: '\S', example: Maria Silva }
         email: { type: string, format: email, example: maria@exemplo.pt }
-        password: { type: string, format: password, minLength: 8, writeOnly: true, example: password123 }
+        password:
+          type: string
+          format: password
+          minLength: 8
+          writeOnly: true
+          description: Pelo menos 8 caracteres e no máximo 72 bytes em UTF-8; não é aparada nem guardada em claro
+          example: password123
         papel: { type: string, enum: [comprador, produtor], default: comprador }
-        produtor: { $ref: '#/components/schemas/PerfilProdutor' }
+        produtor:
+          description: Dados da exploração, obrigatórios no papel produtor e ignorados no papel comprador
+    ProdutorRegistoInput:
+      type: object
+      required: [nomeExploracao, localidade]
+      description: Apenas estes dois campos são copiados no registo; validado é sempre definido como false pelo servidor.
+      properties:
+        nomeExploracao: { type: string, minLength: 1, pattern: '\S', example: Horta da Ribeira }
+        localidade: { type: string, minLength: 1, pattern: '\S', example: Ponte de Lima }
     LoginInput:
       type: object
       required: [email, password]
       properties:
-        email: { type: string, format: email, example: horta@exemplo.pt }
-        password: { type: string, format: password, writeOnly: true, example: password123 }
+        email: { type: string, format: email, minLength: 1, description: Comparado após retirar espaços nas extremidades e converter para minúsculas, example: horta@exemplo.pt }
+        password: { type: string, format: password, minLength: 1, writeOnly: true, description: Comparada sem retirar espaços; mais de 72 bytes em UTF-8 devolve 401, example: password123 }
     Sessao:
       type: object
       required: [token, utilizador]
       properties:
-        token: { type: string, description: JWT assinado pelo servidor }
-        utilizador: { $ref: '#/components/schemas/User' }
+        token: { type: string, description: JWT HS256 com id/papel/nome e expiração; duas horas por omissão }
+        utilizador: { $ref: '#/components/schemas/UserPublico' }
     Categoria:
       type: string
       enum: [Hortícolas, Fruta, Mel, Vinho, Queijo, Padaria, Outros]
