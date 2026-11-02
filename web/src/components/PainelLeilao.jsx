@@ -20,7 +20,7 @@ export default function PainelLeilao({ leilao, atual, participantes, podeLicitar
     <p className="small">Incremento mínimo: {euro(leilao?.incremento ?? 0)}</p>
     <form onSubmit={submeter}>
       <div className="d-flex flex-wrap gap-2 mb-3">{[5, 10, 25].map((v) => <button key={v} type="button" className="btn btn-sm btn-outline-primary" disabled={!ativo}
-        onClick={() => setValor(Math.max(minimo, (Number(valor) || atual?.valor || leilao?.precoBase || 0) + v))}>+{v} €</button>)}</div>
+        onClick={() => setValor(Number(Math.max(minimo, (Number(valor) || atual?.valor || leilao?.precoBase || 0) + v).toFixed(2)))}>+{v} €</button>)}</div>
       <label htmlFor="valor" className="form-label">O seu valor (€)</label>
       <input id="valor" type="number" step="0.01" min={minimo} className="form-control mb-2" value={valor} onChange={(e) => setValor(e.target.value)} disabled={!ativo} required />
       <p className="small">Valor mínimo: {euro(minimo)}</p>

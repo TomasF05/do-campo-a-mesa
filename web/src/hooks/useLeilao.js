@@ -20,20 +20,41 @@ export function useLeilao(id, token) {
     if (!token) return undefined;
     const socket = io(API_URL, { auth: { token } });
     socketRef.current = socket;
+    // Guarda eventos que possam chegar enquanto o estado inicial ainda está a carregar.
+    let novas = [];
+    let revisao = 0;
 
-    socket.emit('entrar', id);
+    const entrar = () => socket.emit('entrar', id);
+    socket.on('connect', entrar); // Também recupera a sala e o estado depois de uma reconexão.
     socket.on('estado', ({ leilao: l, licitacoes }) => {
-      const historico = licitacoes.map((b) => ({
+      const recentes = novas.filter((b) => b.numLicitacoes > l.numLicitacoes);
+      const ultima = recentes[0];
+      const versao = ultima?.numLicitacoes ?? l.numLicitacoes;
+      if (versao < revisao) return;
+      revisao = versao;
+      const unicas = [...new Map([...recentes, ...licitacoes].map((b) => [b._id, b])).values()];
+      const historico = unicas.slice(0, 20).map((b) => ({
         ...b, comprador: b.comprador?.nome || b.nome || 'Comprador', data: b.createdAt
       }));
-      setLeilao({ ...l, historico });
-      setAtual(l.licitacaoAtual);
+      const atual = ultima ? { ...ultima, em: ultima.createdAt } : l.licitacaoAtual;
+      setLeilao({ ...l, historico, licitacaoAtual: atual, numLicitacoes: versao });
+      setAtual(atual);
     });
-    socket.on('nova-licitacao', setAtual);
+    socket.on('nova-licitacao', (b) => {
+      if (b.numLicitacoes <= revisao) return;
+      revisao = b.numLicitacoes;
+      novas = [b, ...novas].slice(0, 20);
+      const atual = { ...b, em: b.createdAt };
+      setAtual(atual);
+      setLeilao((l) => !l || l.numLicitacoes >= b.numLicitacoes ? l : ({
+        ...l, licitacaoAtual: atual, numLicitacoes: b.numLicitacoes,
+        historico: [{ ...b, comprador: b.nome || 'Comprador', data: b.createdAt }, ...(l.historico || []).filter((n) => n._id !== b._id)].slice(0, 20)
+      }));
+    });
     socket.on('presenca', setParticipantes);
     socket.on('recusada', setErro);
     socket.on('connect_error', (e) => setErro(e.message));
-    // TODO: evento de fim de leilão ('terminado') e histórico de licitações
+    // TODO: evento de fim de leilão ('terminado')
 
     return () => {
       socket.emit('sair', id);
@@ -51,7 +72,18 @@ export function useLeilao(id, token) {
       } catch (err) { setErro(err.message); }
       return;
     }
-    socketRef.current?.emit('licitar', { leilaoId: id, valor });
+    const socket = socketRef.current;
+    if (!socket?.connected) { setErro('Sem ligação ao servidor. Aguarde a reconexão antes de licitar.'); return; }
+    await new Promise((resolve) => {
+      socket.timeout(8000).emit('licitar', { leilaoId: id, valor }, (err, resposta) => {
+        // Uma resposta de uma sessão anterior não deve alterar a página atual.
+        if (socketRef.current === socket) {
+          if (err) setErro('Sem confirmação da licitação. Consulte o estado atual antes de tentar novamente.');
+          else if (!resposta?.ok) setErro(resposta?.erro || 'Licitação recusada');
+        }
+        resolve();
+      });
+    });
   };
 
   const dados = USAR_DADOS_SIMULADOS ? pedido.dados : leilao || pedido.dados;

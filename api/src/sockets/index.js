@@ -24,8 +24,10 @@ module.exports = (io) => {
     socket.join(`user:${socket.user.id}`);
 
     let temporizador;
-    const expirar = () => {
-      socket.emit('recusada', 'Sessão expirada. Inicie sessão novamente.');
+    const expirar = (ack) => {
+      const erro = 'Sessão expirada. Inicie sessão novamente.';
+      if (typeof ack === 'function') ack({ ok: false, erro });
+      else socket.emit('recusada', erro);
       socket.disconnect(true);
     };
     const vigiarExpiracao = () => {
@@ -36,9 +38,11 @@ module.exports = (io) => {
       temporizador.unref();
     };
     socket.on('disconnect', () => clearTimeout(temporizador));
-    socket.use((_evento, next) => {
+    socket.use((evento, next) => {
       // Também bloqueia eventos se o temporizador estiver atrasado pelo event loop.
-      if (Date.now() >= socket.user.exp * 1000) expirar();
+      if (Date.now() >= socket.user.exp * 1000) {
+        expirar(evento[0] === 'licitar' ? evento.at(-1) : null);
+      }
       next(); // O Socket.io só entrega o evento se a ligação continuar aberta.
     });
 
