@@ -22,7 +22,13 @@ export function useLeilao(id, token) {
     socketRef.current = socket;
 
     socket.emit('entrar', id);
-    socket.on('estado', (l) => { setLeilao(l); setAtual(l.licitacaoAtual); });
+    socket.on('estado', ({ leilao: l, licitacoes }) => {
+      const historico = licitacoes.map((b) => ({
+        ...b, comprador: b.comprador?.nome || b.nome || 'Comprador', data: b.createdAt
+      }));
+      setLeilao({ ...l, historico });
+      setAtual(l.licitacaoAtual);
+    });
     socket.on('nova-licitacao', setAtual);
     socket.on('presenca', setParticipantes);
     socket.on('recusada', setErro);
