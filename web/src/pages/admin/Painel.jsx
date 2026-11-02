@@ -37,7 +37,7 @@ export default function PainelAdmin() {
           </div></article>)}{pendentes.dados?.length === 0 && <p>Não há produtores por validar.</p>}
         </section>
         <section className="card p-3" aria-labelledby="denunciadas"><h2 id="denunciadas" className="h4">Avaliações denunciadas</h2>
-          {reviews.dados?.map((r) => <article key={r._id} className="mb-3"><h3 className="h6">{r.produtor}</h3><p>{r.texto}</p>
+          {reviews.dados?.map((r) => <article key={r._id} className="mb-3"><h3 className="h6">{typeof r.produtor === 'object' ? r.produtor?.nome : r.produtor}</h3><p>{r.comentario || r.texto}</p>
             <button className="btn btn-outline-danger" type="button" disabled={aGuardar} onClick={() => decidir(`/admin/reviews/${r._id}`, { visivel: false }, 'Avaliação ocultada.')}>Ocultar avaliação</button>
           </article>)}{reviews.dados?.length === 0 && <p>Não há avaliações por rever.</p>}
         </section>

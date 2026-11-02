@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 
 export function useLeilao(id, token) {
   const { utilizador } = useAuth();
-  const simulado = useApi(USAR_DADOS_SIMULADOS ? `/auctions/${id}` : null);
+  const pedido = useApi(`/auctions/${encodeURIComponent(id)}`);
   const socketRef = useRef(null);
   const [leilao, setLeilao] = useState(null);
   const [atual, setAtual] = useState(null);
@@ -41,15 +41,16 @@ export function useLeilao(id, token) {
     if (USAR_DADOS_SIMULADOS) {
       try {
         const dados = await api(`/auctions/${id}/bids`, { metodo: 'POST', corpo: { valor }, utilizador });
-        simulado.setDados(dados);
+        pedido.setDados(dados);
       } catch (err) { setErro(err.message); }
       return;
     }
     socketRef.current?.emit('licitar', { leilaoId: id, valor });
   };
 
-  return { leilao: USAR_DADOS_SIMULADOS ? simulado.dados : leilao,
-    atual: USAR_DADOS_SIMULADOS ? simulado.dados?.licitacaoAtual : atual,
+  const dados = USAR_DADOS_SIMULADOS ? pedido.dados : leilao || pedido.dados;
+  return { leilao: dados,
+    atual: USAR_DADOS_SIMULADOS ? dados?.licitacaoAtual : atual || dados?.licitacaoAtual,
     participantes: USAR_DADOS_SIMULADOS ? 1 : participantes,
-    erro: erro || simulado.erro, aCarregar: USAR_DADOS_SIMULADOS ? simulado.aCarregar : !leilao && !erro, licitar };
+    erro: erro || pedido.erro, aCarregar: pedido.aCarregar && !dados && !erro, licitar };
 }
