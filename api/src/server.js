@@ -5,6 +5,7 @@ const { Server } = require('socket.io');
 const app = require('./app');
 const { ligarBD } = require('./config/db');
 const registarSockets = require('./sockets');
+const { iniciarCiclo } = require('./services/cicloLeiloes');
 
 const PORT = process.env.PORT || 3000;
 
@@ -19,6 +20,8 @@ async function iniciar() {
   // Disponibiliza o io às rotas (ex.: notificar o comprador quando a encomenda muda)
   app.set('io', io);
   registarSockets(io);
+  const pararCiclo = await iniciarCiclo(io);
+  server.on('close', pararCiclo);
 
   server.listen(PORT, () => {
     console.log(`API em http://localhost:${PORT}`);
