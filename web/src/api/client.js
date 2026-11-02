@@ -19,7 +19,10 @@ export async function api(caminho, { metodo = 'GET', corpo, token, utilizador, s
   if (resposta.status === 204) return null;
   const dados = await resposta.json().catch(() => null);
   if (!resposta.ok) {
-    throw new Error(dados?.erro || `Erro ${resposta.status}`);
+    if (resposta.status === 401 && token) {
+      window.dispatchEvent(new CustomEvent('sessao-expirada', { detail: { token } }));
+    }
+    throw Object.assign(new Error(dados?.erro || `Erro ${resposta.status}`), { status: resposta.status, detalhes: dados?.detalhes });
   }
   return dados;
 }
