@@ -1,32 +1,41 @@
 import { useEffect, useState } from 'react';
 import { euro } from '../data/simulador.js';
+import { useContagem, formatarTempo } from '../hooks/useContagem.js';
 
-export default function PainelLeilao({ leilao, atual, participantes, podeLicitar, licitar, erro }) {
+export default function PainelLeilao({ leilao, atual, participantes, podeLicitar, comprador, licitar, erro, mensagem, aviso, relogio, ligado, aEnviar }) {
   const [valor, setValor] = useState('');
-  const [agora, setAgora] = useState(Date.now());
-  const [aEnviar, setAEnviar] = useState(false);
+  const restante = useContagem(leilao.estado === 'agendado' ? leilao.iniciaEm : leilao.terminaEm, relogio);
+  const atualCentimos = Math.round((atual?.valor ?? leilao.precoBase) * 100);
+  const incremento = Math.round(leilao.incremento * 100);
+  const minimo = atualCentimos + incremento;
+  const ativo = comprador && podeLicitar && leilao.estado === 'ativo' && restante > 0 && Number.isSafeInteger(minimo) && incremento > 0;
+  useEffect(() => { setValor((minimo / 100).toFixed(2)); }, [leilao._id, minimo]);
 
-  useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 1000); return () => clearInterval(t); }, []);
-
-  const minimo = Number(((atual?.valor ?? leilao?.precoBase ?? 0) + (leilao?.incremento ?? 0.01)).toFixed(2));
-  const segundos = Math.max(0, Math.ceil((Date.parse(leilao?.terminaEm) - agora) / 1000));
-  const tempo = Number.isFinite(segundos) ? `${Math.floor(segundos / 86400)} d ${Math.floor(segundos % 86400 / 3600)} h ${Math.floor(segundos % 3600 / 60)} min ${segundos % 60} s` : '—';
-  const ativo = podeLicitar && leilao?.estado === 'ativo' && segundos > 0;
-
-  async function submeter(e) { e.preventDefault(); setAEnviar(true); try { await licitar(Number(valor)); setValor(''); } finally { setAEnviar(false); } }
+  async function submeter(e) {
+    e.preventDefault();
+    if (!ativo || aEnviar) return;
+    await licitar(Number(valor));
+  }
   return <aside className="card p-3" aria-label="Painel de licitação">
-    <p>{participantes} a assistir</p><p className="texto-secundario">Tempo restante: {tempo}</p>
-    <p className="mb-0">Licitação atual</p><p className="valor-atual">{euro(atual?.valor ?? leilao?.precoBase ?? 0)}</p>
-    <p className="small">Incremento mínimo: {euro(leilao?.incremento ?? 0)}</p>
-    <form onSubmit={submeter}>
-      <div className="d-flex flex-wrap gap-2 mb-3">{[5, 10, 25].map((v) => <button key={v} type="button" className="btn btn-sm btn-outline-primary" disabled={!ativo}
-        onClick={() => setValor(Number(Math.max(minimo, (Number(valor) || atual?.valor || leilao?.precoBase || 0) + v).toFixed(2)))}>+{v} €</button>)}</div>
+    <p>{ligado ? `${participantes} a assistir` : 'Participantes indisponíveis'}</p>
+    <p className="texto-secundario">{leilao.estado === 'terminado' ? 'Leilão terminado' : `${leilao.estado === 'agendado' ? 'Começa em' : 'Tempo restante'}: ${formatarTempo(restante)}`}</p>
+    {!relogio && leilao.estado !== 'terminado' && <p className="small">Tempo estimado: hora do servidor ainda indisponível.</p>}
+    {relogio && leilao.estado !== 'terminado' && <p className="small">Contagem baseada na última sincronização com o servidor.</p>}
+    <p className="mb-0">{leilao.estado === 'terminado' ? 'Valor final' : 'Licitação atual'}</p><p className="valor-atual">{euro(atual?.valor ?? leilao.precoBase)}</p>
+    <p>{leilao.numLicitacoes || 0} licitações</p>
+    {leilao.estado !== 'terminado' && restante === 0 && <p role="status">{leilao.estado === 'agendado' ? 'A aguardar abertura pelo servidor.' : 'Prazo atingido. A aguardar confirmação do servidor.'}</p>}
+    <p className="small">Incremento mínimo: {euro(leilao.incremento)}</p>
+    {leilao.estado !== 'terminado' && <form onSubmit={submeter}>
+      <div className="d-flex flex-wrap gap-2 mb-3">{[1, 2, 5].map((k) => <button key={k} type="button" className="btn btn-sm btn-outline-primary" disabled={!ativo || aEnviar}
+        onClick={() => setValor(((atualCentimos + k * incremento) / 100).toFixed(2))}>+{euro(k * incremento / 100)}</button>)}</div>
       <label htmlFor="valor" className="form-label">O seu valor (€)</label>
-      <input id="valor" type="number" step="0.01" min={minimo} className="form-control mb-2" value={valor} onChange={(e) => setValor(e.target.value)} disabled={!ativo} required />
-      <p className="small">Valor mínimo: {euro(minimo)}</p>
+      <input id="valor" type="number" step="0.01" min={minimo / 100} className="form-control mb-2" value={valor} onChange={(e) => setValor(e.target.value)} disabled={!ativo || aEnviar} required />
+      <p className="small">Valor mínimo: {euro(minimo / 100)}</p>
       <button type="submit" className="btn btn-success w-100" disabled={!ativo || aEnviar}>{aEnviar ? 'A enviar…' : 'Licitar'}</button>
-      {!podeLicitar && <p className="small mt-2">Apenas compradores podem licitar.</p>}
-    </form>
+      {!comprador && <p className="small mt-2">Apenas compradores podem licitar.</p>}
+    </form>}
+    {aviso && <div className="alert alert-warning mt-3 mb-0" role="status">{aviso}</div>}
     {erro && <div className="alert alert-warning mt-3 mb-0" role="alert">{erro}</div>}
+    {mensagem && <div className="alert alert-success mt-3 mb-0" role="status">{mensagem}</div>}
   </aside>;
 }
