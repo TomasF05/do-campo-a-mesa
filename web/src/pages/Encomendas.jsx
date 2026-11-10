@@ -2,10 +2,12 @@
 import EstadoEncomenda from '../components/EstadoEncomenda.jsx';
 import EstadoPedido from '../components/EstadoPedido.jsx';
 import { useApi } from '../hooks/useApi.js';
+import { useAtualizacaoSocket } from '../hooks/useNotificacoes.js';
 import { euro, totalEncomenda } from '../data/simulador.js';
 
 export default function Encomendas() {
-  const { dados, erro, aCarregar } = useApi('/orders');
+  const { dados, erro, aCarregar, recarregar } = useApi('/orders');
+  useAtualizacaoSocket('encomenda-atualizada|leilao-ganho|painel-atualizado', recarregar);
   return (
     <>
       <h1>Encomendas</h1>

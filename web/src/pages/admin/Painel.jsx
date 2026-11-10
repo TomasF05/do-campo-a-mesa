@@ -1,7 +1,8 @@
 // Administrador: validação de produtores, moderação e estatísticas
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
+import { useAtualizacaoSocket } from '../../hooks/useNotificacoes.js';
 import { api } from '../../api/client.js';
 import Indicadores from '../../components/Indicadores.jsx';
 import EstadoPedido from '../../components/EstadoPedido.jsx';
@@ -13,12 +14,14 @@ export default function PainelAdmin() {
   const pendentes = useApi('/admin/produtores/pendentes');
   const reviews = useApi('/admin/reviews/denunciadas');
   const leiloes = useApi('/auctions');
+  const atualizarPainel = useCallback(() => Promise.all([estatisticas.recarregar(), pendentes.recarregar(), reviews.recarregar(), leiloes.recarregar()]), [estatisticas.recarregar, pendentes.recarregar, reviews.recarregar, leiloes.recarregar]);
+  useAtualizacaoSocket('painel-atualizado|aberto|terminado', atualizarPainel);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const [aGuardar, setAGuardar] = useState(false);
   async function decidir(caminho, corpo, mensagem) {
     setAGuardar(true); setErro('');
-    try { await api(caminho, { metodo: 'PATCH', corpo, token, utilizador }); setAviso(mensagem); pendentes.recarregar(); reviews.recarregar(); }
+    try { await api(caminho, { metodo: 'PATCH', corpo, token, utilizador }); setAviso(mensagem); atualizarPainel(); }
     catch (err) { setErro(err.message); } finally { setAGuardar(false); }
   }
   return (
