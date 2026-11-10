@@ -39,6 +39,11 @@ router.get('/:id', a(async (req, res) => {
 router.post('/', auth('produtor'), produtorValidado, a(async (req, res) => {
   const dados = campos(req.body, ['produto', 'lote', 'descricao', 'quantidade', 'precoBase', 'incremento', 'iniciaEm', 'terminaEm', 'duracao']);
   numero(dados.precoBase, 'Preço base'); numero(dados.incremento, 'Incremento', 0.01);
+  for (const valor of [dados.precoBase, dados.incremento]) {
+    const [euros, fracao = ''] = String(valor).split('.');
+    const casas = fracao.padEnd(2, '0');
+    if (!/^\d+(\.\d{1,2})?$/.test(String(valor)) || !Number.isSafeInteger(Number(euros + casas)) || valor.toFixed(2) !== `${euros}.${casas}`) throw erro(400, 'Indique valores monetários válidos, com no máximo duas casas decimais');
+  }
   if (dados.produto) {
     id(dados.produto);
     if (!await Product.exists({ _id: dados.produto, produtor: req.user.id })) throw erro(404, 'Produto não encontrado');
