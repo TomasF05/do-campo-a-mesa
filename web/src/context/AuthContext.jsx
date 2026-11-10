@@ -54,6 +54,15 @@ export function AuthProvider({ children }) {
     return () => { montado = false; window.removeEventListener('sessao-expirada', expirar); };
   }, [atualizar, sair]);
 
+  useEffect(() => {
+    if (USAR_DADOS_SIMULADOS || !sessao?.token || tokenValidado === sessao.token) return undefined;
+    // Recupera a validação inicial se a API estava indisponível ao abrir a aplicação.
+    const recuperar = () => { atualizar(); };
+    window.addEventListener('online', recuperar);
+    window.addEventListener('focus', recuperar);
+    return () => { window.removeEventListener('online', recuperar); window.removeEventListener('focus', recuperar); };
+  }, [sessao?.token, tokenValidado, atualizar]);
+
   async function entrar(email, password) {
     const nova = await api('/auth/login', { metodo: 'POST', corpo: { email, password } });
     guardarSessao(nova);
