@@ -23,7 +23,7 @@ export default function PainelProdutor() {
   const stockBaixo = (produtos.dados || []).filter((p) => p.stock < 10);
   const estados = ['pendente', 'confirmada', 'pronta', 'entregue'];
   async function avancar(e) {
-    try { await api(`/orders/${e._id}/estado`, { metodo: 'PATCH', token, utilizador, corpo: { estado: estados[estados.indexOf(e.estado) + 1] } }); setAviso('Estado da encomenda atualizado.'); encomendas.recarregar(); }
+    try { await api(`/orders/${e._id}/estado`, { metodo: 'PATCH', token, corpo: { estado: estados[estados.indexOf(e.estado) + 1] } }); setAviso('Estado da encomenda atualizado.'); encomendas.recarregar(); }
     catch (err) { setErro(err.message); }
   }
   return (

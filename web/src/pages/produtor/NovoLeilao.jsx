@@ -18,7 +18,7 @@ export default function NovoLeilao() {
     e.preventDefault(); setErro(''); setAGuardar(true);
     try {
       const inicio = dados.iniciaEm ? new Date(dados.iniciaEm) : new Date();
-      const leilao = await api('/auctions', { metodo: 'POST', token, utilizador, corpo: { ...dados, precoBase: Number(dados.precoBase), incremento: Number(dados.incremento), iniciaEm: inicio.toISOString(), terminaEm: new Date(inicio.getTime() + Number(dados.duracao) * 60000).toISOString() } });
+      const leilao = await api('/auctions', { metodo: 'POST', token, corpo: { ...dados, precoBase: Number(dados.precoBase), incremento: Number(dados.incremento), iniciaEm: inicio.toISOString(), terminaEm: new Date(inicio.getTime() + Number(dados.duracao) * 60000).toISOString() } });
       navigate(`/leiloes/${leilao._id}`);
     } catch (err) { setErro(err.message); } finally { setAGuardar(false); }
   }

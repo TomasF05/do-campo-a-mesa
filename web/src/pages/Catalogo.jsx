@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import CartaoProduto from '../components/CartaoProduto.jsx';
 import { useCarrinho } from '../context/CarrinhoContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
-import { api, USAR_DADOS_SIMULADOS } from '../api/client.js';
+import { api } from '../api/client.js';
 import { useApi } from '../hooks/useApi.js';
 import CartaoLeilao from '../components/CartaoLeilao.jsx';
 import EstadoPedido from '../components/EstadoPedido.jsx';
@@ -34,7 +34,7 @@ export default function Catalogo() {
         .then((dados) => { if (!controlador.signal.aborted) setProdutos(dados); })
         .catch((e) => { if (!controlador.signal.aborted) { setErro(e.message); setProdutos([]); } })
         .finally(() => { if (!controlador.signal.aborted) setACarregar(false); });
-    }, USAR_DADOS_SIMULADOS ? 0 : 300);
+    }, 300);
 
     return () => { clearTimeout(t); controlador.abort(); };
   }, [filtro]);

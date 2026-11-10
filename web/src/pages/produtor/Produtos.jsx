@@ -19,13 +19,13 @@ export default function ProdutosProdutor() {
   async function guardar(e) {
     e.preventDefault(); setAGuardar(true); setFalha('');
     try {
-      await api(form._id ? `/products/${form._id}` : '/products', { metodo: form._id ? 'PUT' : 'POST', token, utilizador, corpo: { ...form, preco: Number(form.preco), stock: Number(form.stock) } });
+      await api(form._id ? `/products/${form._id}` : '/products', { metodo: form._id ? 'PUT' : 'POST', token, corpo: { ...form, preco: Number(form.preco), stock: Number(form.stock) } });
       setForm(VAZIO); setAviso('Produto guardado.'); recarregar();
     } catch (err) { setFalha(err.message); } finally { setAGuardar(false); }
   }
   async function remover(p) {
     setFalha('');
-    try { await api(`/products/${p._id}`, { metodo: 'DELETE', token, utilizador }); setAviso(`${p.nome}: removido.`); recarregar(); }
+    try { await api(`/products/${p._id}`, { metodo: 'DELETE', token }); setAviso(`${p.nome}: removido.`); recarregar(); }
     catch (err) { setFalha(err.message); }
   }
   return <>

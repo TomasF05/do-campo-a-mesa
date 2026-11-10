@@ -1,6 +1,6 @@
 // Estado global da sessão (utilizador + token)
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { api, USAR_DADOS_SIMULADOS } from '../api/client.js';
+import { api } from '../api/client.js';
 
 const AuthContext = createContext(null);
 
@@ -9,11 +9,11 @@ export function AuthProvider({ children }) {
     try {
       const s = JSON.parse(localStorage.getItem('sessao'));
       if (!s?.utilizador || !['comprador', 'produtor', 'admin'].includes(s.utilizador.papel)) return null;
-      return USAR_DADOS_SIMULADOS ? (s.simulada ? s : null) : (s.token && !s.simulada ? s : null);
+      return s.token ? s : null;
     } catch { return null; }
   });
   const sessaoAtual = useRef(sessao);
-  const [aCarregar, setACarregar] = useState(!USAR_DADOS_SIMULADOS && Boolean(sessao?.token));
+  const [aCarregar, setACarregar] = useState(Boolean(sessao?.token));
   const [tokenValidado, setTokenValidado] = useState(null);
 
   const guardarSessao = useCallback((nova) => {
@@ -34,7 +34,7 @@ export function AuthProvider({ children }) {
 
   const atualizar = useCallback(async () => {
     const atual = sessaoAtual.current;
-    if (USAR_DADOS_SIMULADOS || !atual?.token) return;
+    if (!atual?.token) return;
     try {
       const utilizador = await api('/auth/eu', { token: atual.token });
       if (sessaoAtual.current?.token === atual.token) {
@@ -55,7 +55,7 @@ export function AuthProvider({ children }) {
   }, [atualizar, sair]);
 
   useEffect(() => {
-    if (USAR_DADOS_SIMULADOS || !sessao?.token || tokenValidado === sessao.token) return undefined;
+    if (!sessao?.token || tokenValidado === sessao.token) return undefined;
     // Recupera a validação inicial se a API estava indisponível ao abrir a aplicação.
     const recuperar = () => { atualizar(); };
     window.addEventListener('online', recuperar);
@@ -76,7 +76,7 @@ export function AuthProvider({ children }) {
       utilizador: sessao?.utilizador || null,
       token: sessao?.token || null,
       entrar, sair, guardarSessao, atualizar, aCarregar,
-      sessaoValidada: USAR_DADOS_SIMULADOS ? Boolean(sessao?.utilizador) : Boolean(sessao?.token && tokenValidado === sessao.token)
+      sessaoValidada: Boolean(sessao?.token && tokenValidado === sessao.token)
     }}>
       {children}
     </AuthContext.Provider>

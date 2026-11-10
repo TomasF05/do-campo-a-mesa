@@ -1,7 +1,7 @@
 // Uma ligação partilhada por sessão autenticada nesta aba.
 import { createContext, useContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
-import { API_URL, USAR_DADOS_SIMULADOS } from '../api/client.js';
+import { API_URL } from '../api/client.js';
 import { useAuth } from './AuthContext.jsx';
 
 const SocketContext = createContext({ socket: null, erro: '' });
@@ -11,7 +11,7 @@ export function SocketProvider({ children }) {
   const [ligacao, setLigacao] = useState(null);
   const [erro, setErro] = useState('');
   const utilizadorId = utilizador?._id || utilizador?.id;
-  const podeLigar = !USAR_DADOS_SIMULADOS && !aCarregar && sessaoValidada && Boolean(token && utilizadorId);
+  const podeLigar = !aCarregar && sessaoValidada && Boolean(token && utilizadorId);
 
   useEffect(() => {
     setErro('');

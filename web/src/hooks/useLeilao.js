@@ -1,5 +1,4 @@
 import { useEffect, useReducer, useRef } from 'react';
-import { USAR_DADOS_SIMULADOS } from '../api/client.js';
 import { useApi } from './useApi.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSocket } from '../context/SocketContext.jsx';
@@ -71,7 +70,7 @@ export function useLeilao(id, token) {
   }, [pedido.dados, leilaoId, chave]);
 
   useEffect(() => {
-    if (USAR_DADOS_SIMULADOS || !token || !socket) return undefined;
+    if (!token || !socket) return undefined;
     const atual = { socket, chave };
     subscricao.current = atual;
     const mudar = (dados) => dispatch({ tipo: 'estado', chave, dados });
@@ -104,7 +103,7 @@ export function useLeilao(id, token) {
 
   const dados = estado.chave === chave ? estado : inicial(chave);
   const ligado = Boolean(socket?.connected && dados.ligado);
-  const podeLicitar = ligado && dados.sincronizado && Boolean(dados.relogio) && !USAR_DADOS_SIMULADOS;
+  const podeLicitar = ligado && dados.sincronizado && Boolean(dados.relogio);
   const licitar = (valor) => {
     if (envio.current) return envio.current.promessa;
     const l = dados.leilao;
@@ -142,6 +141,6 @@ export function useLeilao(id, token) {
   return { leilao: dados.leilao, atual: dados.leilao?.licitacaoAtual, participantes: dados.participantes,
     relogio: dados.relogio, ligado, sincronizado: dados.sincronizado, podeLicitar, aEnviar: dados.aEnviar,
     erro: dados.erro || (!dados.leilao ? pedido.erro : ''), mensagem: dados.mensagem,
-    aviso: USAR_DADOS_SIMULADOS ? 'Dados de demonstração. As licitações reais exigem ligação à API.' : !ligado ? `${erroSocket || 'Sem ligação em tempo real.'} Os dados da API continuam disponíveis; as licitações estão desativadas.` : !dados.sincronizado ? 'A sincronizar o estado e a hora com o servidor. As licitações estão desativadas.' : '',
+    aviso: !ligado ? `${erroSocket || 'Sem ligação em tempo real.'} Os dados da API continuam disponíveis; as licitações estão desativadas.` : !dados.sincronizado ? 'A sincronizar o estado e a hora com o servidor. As licitações estão desativadas.' : '',
     aCarregar: !dados.leilao && pedido.aCarregar && !dados.erro, licitar, recarregar: pedido.recarregar };
 }
