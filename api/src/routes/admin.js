@@ -5,6 +5,7 @@ const User = require('../models/User');
 const Order = require('../models/Order');
 const Auction = require('../models/Auction');
 const Review = require('../models/Review');
+const { notificar } = require('../services/notificacoes');
 const { a, erro, parametroId, campos } = require('../utils/http');
 
 router.use(auth('admin'));
@@ -31,8 +32,15 @@ router.get('/produtores/pendentes', a(async (req, res) => {
 router.patch('/produtores/:id/validacao', a(async (req, res) => {
   const { aprovado } = campos(req.body, ['aprovado']);
   if (typeof aprovado !== 'boolean') throw erro(400, 'Indique aprovado como true ou false');
-  const produtor = await User.findOneAndUpdate({ _id: req.params.id, papel: 'produtor' }, { 'produtor.validado': aprovado }, { new: true, runValidators: true }).select('nome email produtor');
-  if (!produtor) throw erro(404, 'Produtor não encontrado');
+  const produtor = await User.findOneAndUpdate({ _id: req.params.id, papel: 'produtor', 'produtor.validado': { $ne: aprovado } }, { 'produtor.validado': aprovado }, { new: true, runValidators: true }).select('nome email produtor updatedAt');
+  if (!produtor) {
+    const atual = await User.findOne({ _id: req.params.id, papel: 'produtor' }).select('nome email produtor');
+    if (!atual) throw erro(404, 'Produtor não encontrado');
+    return res.json(atual);
+  }
+  if (aprovado) notificar(req.app.get('io'), `user:${produtor._id}`, 'conta-validada', { id: produtor._id, updatedAt: produtor.updatedAt });
+  else notificar(req.app.get('io'), `user:${produtor._id}`, 'painel-atualizado', { recurso: 'conta' });
+  notificar(req.app.get('io'), 'admin', 'painel-atualizado', { recurso: 'produtores' });
   res.json(produtor);
 }));
 
@@ -47,6 +55,7 @@ router.patch('/reviews/:id', a(async (req, res) => {
   if (typeof visivel !== 'boolean') throw erro(400, 'Indique visivel como true ou false');
   const review = await Review.findByIdAndUpdate(req.params.id, { visivel }, { new: true, runValidators: true });
   if (!review) throw erro(404, 'Avaliação não encontrada');
+  notificar(req.app.get('io'), 'admin', 'painel-atualizado', { recurso: 'avaliacoes' });
   res.json(review);
 }));
 

@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
+const { notificar } = require('../services/notificacoes');
 const { a, erro, campos } = require('../utils/http');
 
 function credenciais(corpo) {
@@ -37,6 +38,7 @@ router.post('/registo', a(async (req, res) => {
   await u.validate();
   u.passwordHash = await bcrypt.hash(password, 12);
   await u.save();
+  notificar(req.app.get('io'), 'admin', 'painel-atualizado', { recurso: 'utilizadores' });
   res.status(201).json({ id: u._id });
 }));
 

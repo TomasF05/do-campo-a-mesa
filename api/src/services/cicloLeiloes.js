@@ -1,6 +1,7 @@
 // Passo 7: ciclo de vida dos leilões. Desativado por omissão durante o desenvolvimento.
 const Auction = require('../models/Auction');
 const Order = require('../models/Order');
+const { notificar } = require('./notificacoes');
 
 async function abrirAgendados(io) {
   const filtro = { estado: 'agendado', $expr: { $lte: ['$iniciaEm', '$$NOW'] } };
@@ -13,7 +14,9 @@ async function abrirAgendados(io) {
       }, { new: true, writeConcern: { w: 'majority' }, timeoutMS: 5000 }).lean();
       if (!leilao) continue; // Outra execução já alterou este leilão.
       abertos++;
-      io.to(`leilao:${_id}`).emit('aberto', { id: _id.toString() });
+      notificar(io, `leilao:${_id}`, 'aberto', { id: _id.toString() });
+      notificar(io, `user:${leilao.produtor}`, 'painel-atualizado', { recurso: 'leiloes' });
+      notificar(io, 'admin', 'painel-atualizado', { recurso: 'leiloes' });
     } catch (err) {
       console.error(`Erro ao abrir o leilão ${_id}:`, err);
     }
@@ -67,9 +70,11 @@ async function fecharExpirados(io) {
         encomenda: encomenda?.toString() ?? null, numLicitacoes: leilao.numLicitacoes
       };
       terminados++;
-      io.to(`leilao:${_id}`).emit('terminado', dados);
-      if (comprador) io.to(`user:${comprador}`).emit('leilao-ganho', dados);
-      io.to(`user:${leilao.produtor}`).emit('leilao-terminado', dados);
+      const { encomenda: _privada, ...publicos } = dados;
+      notificar(io, `leilao:${_id}`, 'terminado', publicos);
+      if (comprador) notificar(io, `user:${comprador}`, 'leilao-ganho', dados);
+      notificar(io, `user:${leilao.produtor}`, 'leilao-terminado', dados);
+      notificar(io, 'admin', 'painel-atualizado', { recurso: 'leiloes' });
     } catch (err) {
       // Um erro num leilão não impede os restantes; o próximo ciclo volta a tentar.
       console.error(`Erro ao fechar o leilão ${_id}:`, err);

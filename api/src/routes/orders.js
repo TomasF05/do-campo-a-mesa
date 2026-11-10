@@ -5,6 +5,7 @@ const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const User = require('../models/User');
+const { notificar } = require('../services/notificacoes');
 const { a, erro, id, parametroId, campos } = require('../utils/http');
 
 router.param('id', parametroId);
@@ -36,6 +37,7 @@ router.post('/', auth('comprador'), a(async (req, res) => {
   const produtores = await User.find({ papel: 'produtor', 'produtor.validado': true }).distinct('_id');
   const reservas = [];
   const novas = [];
+  let criadas;
   try {
     const porProdutor = new Map();
     for (const [produto, q] of quantidades) {
@@ -55,14 +57,18 @@ router.post('/', auth('comprador'), a(async (req, res) => {
     novas.push(...[...porProdutor].map(([produtor, linhas]) => ({
       _id: new mongoose.Types.ObjectId(), comprador: req.user.id, produtor, linhas, entrega
     })));
-    const criadas = await Order.insertMany(novas);
-    res.status(201).location('/api/orders').json(criadas);
+    criadas = await Order.insertMany(novas);
   } catch (err) {
     // Compensação do guia: não deixar encomendas parciais nem stock reservado.
     if (novas.length) await Order.deleteMany({ _id: { $in: novas.map((o) => o._id) } });
     for (const r of reservas) await Product.updateOne({ _id: r.id }, { $inc: { stock: r.q } });
     throw err;
   }
+  const io = req.app.get('io');
+  for (const e of criadas) notificar(io, `user:${e.produtor}`, 'nova-encomenda', { id: e._id, total: e.total });
+  notificar(io, `user:${req.user.id}`, 'painel-atualizado', { recurso: 'encomendas' });
+  notificar(io, 'admin', 'painel-atualizado', { recurso: 'encomendas' });
+  res.status(201).location('/api/orders').json(criadas);
 }));
 
 // GET /api/orders  -> 200 [encomendas do utilizador: como comprador ou como produtor]
@@ -79,9 +85,6 @@ router.get('/:id', auth(), a(async (req, res) => {
 }));
 
 // PATCH /api/orders/:id/estado  (produtor)  -> 200
-// TODO (Passo 7): depois de gravar, notificar o comprador em tempo real:
-//   req.app.get('io').to(`user:${encomenda.comprador}`)
-//     .emit('encomenda-atualizada', { id: encomenda._id, estado: encomenda.estado });
 router.patch('/:id/estado', auth('produtor'), a(async (req, res) => {
   const { estado } = campos(req.body, ['estado']);
   const novo = Order.ESTADOS.indexOf(estado);
@@ -94,6 +97,8 @@ router.patch('/:id/estado', auth('produtor'), a(async (req, res) => {
     const existe = await Order.exists({ _id: req.params.id, produtor: req.user.id });
     throw erro(existe ? 409 : 404, existe ? 'O estado só pode avançar' : 'Encomenda não encontrada');
   }
+  notificar(req.app.get('io'), `user:${o.comprador}`, 'encomenda-atualizada', { id: o._id, estado: o.estado, produtor: req.user.nome });
+  notificar(req.app.get('io'), `user:${o.produtor}`, 'painel-atualizado', { recurso: 'encomendas' });
   res.json(o);
 }));
 

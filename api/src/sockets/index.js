@@ -22,6 +22,8 @@ module.exports = (io) => {
   io.on('connection', (socket) => {
     // Sala pessoal: permite notificar este utilizador (ex.: estado da encomenda)
     socket.join(`user:${socket.user.id}`);
+    // Apenas JWTs de administradores dão acesso aos avisos de atualização do painel.
+    if (socket.user.papel === 'admin') socket.join('admin');
 
     let temporizador;
     const expirar = (ack) => {

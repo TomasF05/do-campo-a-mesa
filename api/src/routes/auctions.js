@@ -5,6 +5,7 @@ const Auction = require('../models/Auction');
 const Bid = require('../models/Bid');
 const Product = require('../models/Product');
 const produtorValidado = require('../middleware/produtorValidado');
+const { notificar } = require('../services/notificacoes');
 const { a, erro, id, parametroId, campos, query, numero } = require('../utils/http');
 
 router.param('id', parametroId);
@@ -55,6 +56,8 @@ router.post('/', auth('produtor'), produtorValidado, a(async (req, res) => {
     produtor: req.user.id, iniciaEm: new Date(inicio), terminaEm: new Date(fim),
     licitacaoAtual: { valor: dados.precoBase }, estado: inicio > Date.now() ? 'agendado' : 'ativo'
   });
+  notificar(req.app.get('io'), `user:${req.user.id}`, 'painel-atualizado', { recurso: 'leiloes' });
+  notificar(req.app.get('io'), 'admin', 'painel-atualizado', { recurso: 'leiloes' });
   res.status(201).location(`/api/auctions/${leilao._id}`).json(leilao);
 }));
 
