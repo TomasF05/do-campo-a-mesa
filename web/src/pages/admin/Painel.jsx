@@ -9,7 +9,7 @@ import EstadoPedido from '../../components/EstadoPedido.jsx';
 import CartaoLeilao from '../../components/CartaoLeilao.jsx';
 
 export default function PainelAdmin() {
-  const { utilizador, token } = useAuth();
+  const { token } = useAuth();
   const estatisticas = useApi('/admin/estatisticas');
   const pendentes = useApi('/admin/produtores/pendentes');
   const reviews = useApi('/admin/reviews/denunciadas');
@@ -21,7 +21,7 @@ export default function PainelAdmin() {
   const [aGuardar, setAGuardar] = useState(false);
   async function decidir(caminho, corpo, mensagem) {
     setAGuardar(true); setErro('');
-    try { await api(caminho, { metodo: 'PATCH', corpo, token, utilizador }); setAviso(mensagem); atualizarPainel(); }
+    try { await api(caminho, { metodo: 'PATCH', corpo, token }); setAviso(mensagem); atualizarPainel(); }
     catch (err) { setErro(err.message); } finally { setAGuardar(false); }
   }
   return (

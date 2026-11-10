@@ -1,9 +1,8 @@
 // Estado global do carrinho
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { USAR_DADOS_SIMULADOS } from '../api/client.js';
 
 const CarrinhoContext = createContext(null);
-const CHAVE = USAR_DADOS_SIMULADOS ? 'carrinho' : 'carrinho-api';
+const CHAVE = 'carrinho-api';
 
 function lerCarrinho() {
   try {

@@ -5,7 +5,7 @@ import { useCarrinho } from '../context/CarrinhoContext.jsx';
 import { api } from '../api/client.js';
 
 export default function FinalizarCarrinho() {
-  const { utilizador, token } = useAuth();
+  const { token } = useAuth();
   const { linhas, esvaziar } = useCarrinho();
   const navigate = useNavigate();
   const [tipo, setTipo] = useState('levantamento');
@@ -15,7 +15,7 @@ export default function FinalizarCarrinho() {
   async function submeter(e) {
     e.preventDefault(); setAEnviar(true); setErro('');
     try {
-      await api('/orders', { metodo: 'POST', utilizador, token, corpo: { linhas: linhas.map((l) => ({ produto: l.produto._id, quantidade: l.quantidade })), entrega: { tipo, morada: tipo === 'entrega' ? morada : '' } } });
+      await api('/orders', { metodo: 'POST', token, corpo: { linhas: linhas.map((l) => ({ produto: l.produto._id, quantidade: l.quantidade })), entrega: { tipo, morada: tipo === 'entrega' ? morada : '' } } });
       esvaziar(); navigate('/encomendas');
     } catch (err) { setErro(err.message); } finally { setAEnviar(false); }
   }

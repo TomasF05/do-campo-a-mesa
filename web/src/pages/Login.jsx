@@ -2,8 +2,6 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { Link } from 'react-router-dom';
-import { USAR_DADOS_SIMULADOS } from '../api/client.js';
-import contas from '../data/contas.json';
 
 const INICIO = { comprador: '/', produtor: '/produtor', admin: '/admin' };
 
@@ -31,11 +29,6 @@ export default function Login() {
   return (
     <form className="formulario-estreito" onSubmit={submeter}>
       <h1>Entrar</h1>
-      {USAR_DADOS_SIMULADOS && <aside className="alert alert-info" aria-label="Contas de demonstração">
-        <p>Use as contas de exemplo do README. Password: <code>password123</code>.</p>
-        <div className="d-flex flex-wrap gap-2">{contas.map((u) => <button key={u._id} type="button" className="btn btn-sm btn-outline-primary"
-          onClick={() => setDados({ email: u.email, password: 'password123' })}>{u.email}</button>)}</div>
-      </aside>}
       <label htmlFor="email" className="form-label">Email</label>
       <input id="email" type="email" autoComplete="username" className="form-control mb-3" required
         value={dados.email} onChange={(e) => setDados({ ...dados, email: e.target.value })} />

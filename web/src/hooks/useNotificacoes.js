@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useSocket, useEventoSocket } from '../context/SocketContext.jsx';
-import { euro } from '../data/simulador.js';
+import { euro } from '../utils.js';
 
 // Os eventos invalidam os dados; o REST continua a ser a fonte de recuperação.
 export function useAtualizacaoSocket(eventos, atualizar) {

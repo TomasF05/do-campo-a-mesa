@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { euro } from '../data/simulador.js';
+import { euro } from '../utils.js';
 import { useContagem, formatarTempo } from '../hooks/useContagem.js';
 
 export default function PainelLeilao({ leilao, atual, participantes, podeLicitar, comprador, licitar, erro, mensagem, aviso, relogio, ligado, aEnviar }) {
