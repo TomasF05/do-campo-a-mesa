@@ -15,7 +15,7 @@ export default function CartaoLeilao({ leilao }) {
       <div className="card-body d-flex flex-column">
         <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
           <span className={`badge ${ leilao.estado === 'ativo' ? 'text-bg-danger' : 'text-bg-secondary' }`}>
-            {leilao.estado === 'ativo' ? 'Em direto' : 'Agendado'}
+            {leilao.estado === 'ativo' ? 'Em direto' : leilao.estado === 'terminado' ? 'Terminado' : 'Agendado'}
           </span>
         </div>
 

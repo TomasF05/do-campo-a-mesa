@@ -26,6 +26,12 @@ const orderSchema = new Schema({
   leilao: { type: Types.ObjectId, ref: 'Auction' }
 }, { timestamps: true, toJSON: { virtuals: true } });
 
+// Só as encomendas de leilões com referência válida participam nesta unicidade.
+orderSchema.index({ leilao: 1 }, {
+  name: 'uma_encomenda_por_leilao', unique: true,
+  partialFilterExpression: { origem: 'leilao', leilao: { $type: 'objectId' } }
+});
+
 orderSchema.virtual('total').get(function total() {
   return Math.round(this.linhas.reduce((soma, linha) => soma + linha.precoUnit * linha.quantidade, 0) * 100) / 100;
 });

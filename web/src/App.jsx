@@ -1,6 +1,7 @@
 // Passo 2: routing no cliente
 import { Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar.jsx';
+import Notificacoes from './components/Notificacoes.jsx';
 import RotaProtegida from './components/RotaProtegida.jsx';
 import Catalogo from './pages/Catalogo.jsx';
 import Produtor from './pages/Produtor.jsx';
@@ -24,6 +25,7 @@ export default function App() {
       Saltar para o conteúdo
     </a>
         <Navbar />
+      <Notificacoes />
       {USAR_DADOS_SIMULADOS && <div className="aviso-demo"><div className="container-xl">Demonstração local · dados e ações guardados apenas neste browser.</div></div>}
       <main id="conteudo" className="container-xl py-4">
         <Routes>

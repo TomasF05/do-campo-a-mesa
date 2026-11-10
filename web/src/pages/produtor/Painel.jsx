@@ -1,8 +1,9 @@
 // Produtor: painel de gestão
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
+import { useAtualizacaoSocket } from '../../hooks/useNotificacoes.js';
 import { api } from '../../api/client.js';
 import { euro, totalEncomenda } from '../../data/simulador.js';
 import Indicadores from '../../components/Indicadores.jsx';
@@ -14,6 +15,8 @@ export default function PainelProdutor() {
   const produtos = useApi(`/products?produtor=${utilizador._id}`);
   const encomendas = useApi('/orders');
   const leiloes = useApi('/auctions');
+  const atualizarPainel = useCallback(() => Promise.all([produtos.recarregar(), encomendas.recarregar(), leiloes.recarregar()]), [produtos.recarregar, encomendas.recarregar, leiloes.recarregar]);
+  useAtualizacaoSocket('nova-encomenda|leilao-terminado|conta-validada|painel-atualizado|aberto|terminado', atualizarPainel);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const lista = encomendas.dados || [];

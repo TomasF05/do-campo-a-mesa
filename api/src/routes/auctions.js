@@ -5,6 +5,7 @@ const Auction = require('../models/Auction');
 const Bid = require('../models/Bid');
 const Product = require('../models/Product');
 const produtorValidado = require('../middleware/produtorValidado');
+const { notificar } = require('../services/notificacoes');
 const { a, erro, id, parametroId, campos, query, numero } = require('../utils/http');
 
 router.param('id', parametroId);
@@ -38,6 +39,11 @@ router.get('/:id', a(async (req, res) => {
 router.post('/', auth('produtor'), produtorValidado, a(async (req, res) => {
   const dados = campos(req.body, ['produto', 'lote', 'descricao', 'quantidade', 'precoBase', 'incremento', 'iniciaEm', 'terminaEm', 'duracao']);
   numero(dados.precoBase, 'Preço base'); numero(dados.incremento, 'Incremento', 0.01);
+  for (const valor of [dados.precoBase, dados.incremento]) {
+    const [euros, fracao = ''] = String(valor).split('.');
+    const casas = fracao.padEnd(2, '0');
+    if (!/^\d+(\.\d{1,2})?$/.test(String(valor)) || !Number.isSafeInteger(Number(euros + casas)) || valor.toFixed(2) !== `${euros}.${casas}`) throw erro(400, 'Indique valores monetários válidos, com no máximo duas casas decimais');
+  }
   if (dados.produto) {
     id(dados.produto);
     if (!await Product.exists({ _id: dados.produto, produtor: req.user.id })) throw erro(404, 'Produto não encontrado');
@@ -55,6 +61,8 @@ router.post('/', auth('produtor'), produtorValidado, a(async (req, res) => {
     produtor: req.user.id, iniciaEm: new Date(inicio), terminaEm: new Date(fim),
     licitacaoAtual: { valor: dados.precoBase }, estado: inicio > Date.now() ? 'agendado' : 'ativo'
   });
+  notificar(req.app.get('io'), `user:${req.user.id}`, 'painel-atualizado', { recurso: 'leiloes' });
+  notificar(req.app.get('io'), 'admin', 'painel-atualizado', { recurso: 'leiloes' });
   res.status(201).location(`/api/auctions/${leilao._id}`).json(leilao);
 }));
 

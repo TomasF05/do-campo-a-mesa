@@ -2,6 +2,7 @@ const router = require('express').Router();
 const auth = require('../middleware/auth');
 const Review = require('../models/Review');
 const Order = require('../models/Order');
+const { notificar } = require('../services/notificacoes');
 const { a, erro, id, parametroId, campos, query } = require('../utils/http');
 
 router.param('id', parametroId);
@@ -36,6 +37,7 @@ router.get('/', a(async (req, res) => {
 router.post('/:id/denuncia', auth(), a(async (req, res) => {
   const r = await Review.findOneAndUpdate({ _id: req.params.id, visivel: true }, { $inc: { denuncias: 1 } });
   if (!r) throw erro(404, 'Avaliação não encontrada');
+  notificar(req.app.get('io'), 'admin', 'painel-atualizado', { recurso: 'avaliacoes' });
   res.status(204).end();
 }));
 
