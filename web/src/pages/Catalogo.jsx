@@ -7,7 +7,7 @@ import { api, USAR_DADOS_SIMULADOS } from '../api/client.js';
 import { useApi } from '../hooks/useApi.js';
 import CartaoLeilao from '../components/CartaoLeilao.jsx';
 import EstadoPedido from '../components/EstadoPedido.jsx';
-import { CATEGORIAS, EPOCAS } from '../data/simulador.js';
+import { CATEGORIAS, EPOCAS } from '../utils.js';
 
 export default function Catalogo() {
   const [produtos, setProdutos] = useState([]);

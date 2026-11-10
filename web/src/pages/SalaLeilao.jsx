@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useLeilao } from '../hooks/useLeilao.js';
 import PainelLeilao from '../components/PainelLeilao.jsx';
 import EstadoPedido from '../components/EstadoPedido.jsx';
-import { euro } from '../data/simulador.js';
+import { euro } from '../utils.js';
 
 export default function SalaLeilao() {
   const { id } = useParams();

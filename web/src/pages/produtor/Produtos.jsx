@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
 import { api } from '../../api/client.js';
-import { CATEGORIAS, EPOCAS } from '../../data/simulador.js';
+import { CATEGORIAS, EPOCAS } from '../../utils.js';
 import CartaoProduto from '../../components/CartaoProduto.jsx';
 import EstadoPedido from '../../components/EstadoPedido.jsx';
 
