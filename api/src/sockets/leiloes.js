@@ -4,6 +4,7 @@
 const { isObjectIdOrHexString } = require('mongoose');
 const Auction = require('../models/Auction');
 const Bid = require('../models/Bid');
+const { notificar } = require('../services/notificacoes');
 
 const sala = (leilaoId) => `leilao:${leilaoId}`;
 const idValido = (id) => typeof id === 'string' && isObjectIdOrHexString(id);
@@ -158,7 +159,7 @@ module.exports = (io, socket) => {
         });
 
         // Sem efeitos externos dentro da transação: um rollback nunca emite uma licitação.
-        io.to(sala(leilaoId)).emit('nova-licitacao', nova);
+        notificar(io, sala(leilaoId), 'nova-licitacao', nova);
         responder({ ok: true, valor: nova.valor, licitacao: nova });
       });
     } catch (err) {
