@@ -1,9 +1,9 @@
 import CartaoLeilao from '../components/CartaoLeilao.jsx';
-import { useApi } from '../hooks/useApi.js';
+import { useLeiloesPublicos } from '../hooks/useLeiloesPublicos.js';
 import EstadoPedido from '../components/EstadoPedido.jsx';
 
 export default function Leiloes() {
-  const { dados, erro, aCarregar } = useApi('/auctions');
+  const { dados, erro, aCarregar } = useLeiloesPublicos();
   const ativos = (dados || []).filter(
     (leilao) =>
       leilao.estado === 'ativo' ||

@@ -5,6 +5,7 @@ import { useCarrinho } from '../context/CarrinhoContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { api } from '../api/client.js';
 import { useApi } from '../hooks/useApi.js';
+import { useLeiloesPublicos } from '../hooks/useLeiloesPublicos.js';
 import CartaoLeilao from '../components/CartaoLeilao.jsx';
 import EstadoPedido from '../components/EstadoPedido.jsx';
 import { CATEGORIAS, EPOCAS } from '../utils.js';
@@ -15,7 +16,7 @@ export default function Catalogo() {
   const [erro, setErro] = useState('');
   const [aCarregar, setACarregar] = useState(true);
   const [aviso, setAviso] = useState('');
-  const { dados: leiloes } = useApi('/auctions');
+  const { dados: leiloes } = useLeiloesPublicos();
   const { dados: produtores } = useApi('/producers');
   const destaque = leiloes?.find((l) => l.estado === 'ativo');
   const carrinho = useCarrinho();
