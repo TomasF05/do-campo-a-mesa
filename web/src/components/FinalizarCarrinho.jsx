@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useCarrinho } from '../context/CarrinhoContext.jsx';
@@ -12,12 +12,25 @@ export default function FinalizarCarrinho() {
   const [morada, setMorada] = useState('');
   const [erro, setErro] = useState('');
   const [aEnviar, setAEnviar] = useState(false);
+  const tentativa = useRef(null);
   async function submeter(e) {
     e.preventDefault(); setAEnviar(true); setErro('');
     try {
-      await api('/orders', { metodo: 'POST', token, corpo: { linhas: linhas.map((l) => ({ produto: l.produto._id, quantidade: l.quantidade })), entrega: { tipo, morada: tipo === 'entrega' ? morada : '' } } });
+      const corpo = { linhas: linhas.map((l) => ({ produto: l.produto._id, quantidade: l.quantidade })), entrega: { tipo, morada: tipo === 'entrega' ? morada : '' } };
+      const assinatura = JSON.stringify(corpo);
+      if (tentativa.current?.assinatura !== assinatura) {
+        const bytes = crypto.getRandomValues(new Uint8Array(16));
+        const chave = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+        tentativa.current = { assinatura, chave };
+      }
+      await api('/orders', { metodo: 'POST', token, corpo, chaveIdempotencia: tentativa.current.chave });
+      tentativa.current = null;
       esvaziar(); navigate('/encomendas');
-    } catch (err) { setErro(err.message); } finally { setAEnviar(false); }
+    } catch (err) {
+      setErro(!err.status || err.status >= 500
+        ? 'Não foi possível confirmar a encomenda. Consulte as suas encomendas antes de tentar novamente.'
+        : err.message);
+    } finally { setAEnviar(false); }
   }
   if (!linhas.length) return null;
   return <form className="card p-3 formulario-estreito" onSubmit={submeter}>
