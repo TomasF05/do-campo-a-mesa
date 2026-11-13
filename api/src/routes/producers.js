@@ -4,10 +4,11 @@ const User = require('../models/User');
 const Product = require('../models/Product');
 const Review = require('../models/Review');
 const auth = require('../middleware/auth');
-const { a, erro, parametroId, query } = require('../utils/http');
+const { a, erro, parametroId, query, campos } = require('../utils/http');
 
 router.param('id', parametroId);
 const sessao = auth();
+const CAMPOS_PUBLICOS = ['nome', 'nomeExploracao', 'localidade', 'descricao'];
 
 // GET /api/producers?localidade=  -> 200 [produtores validados]
 router.get('/', a(async (req, res) => {
@@ -36,6 +37,23 @@ router.get('/:id', (req, res, next) => req.get('Authorization') ? sessao(req, re
       return { ...avaliacao, autor: r.autor?.nome || 'Comprador', texto: r.comentario,
         ...(req.user && { denunciadaPorMim: denunciantes?.some((id) => id.toString() === req.user.id.toLowerCase()) ?? false }) };
     }) });
+}));
+
+router.patch('/:id', auth('produtor'), a(async (req, res) => {
+  if (req.params.id.toLowerCase() !== req.user.id.toLowerCase()) throw erro(404, 'Produtor não encontrado');
+  const dados = campos(req.body, CAMPOS_PUBLICOS);
+  const chaves = Object.keys(dados);
+  if (!chaves.length || chaves.length !== Object.keys(req.body).length) throw erro(400, 'Indique apenas os campos públicos do perfil');
+
+  const alteracoes = {};
+  for (const [campo, valor] of Object.entries(dados)) {
+    if (typeof valor !== 'string' || (campo !== 'descricao' && !valor.trim())) throw erro(400, `Valor inválido para ${campo}`);
+    alteracoes[campo === 'nome' ? campo : `produtor.${campo}`] = valor.trim();
+  }
+  const produtor = await User.findOneAndUpdate({ _id: req.user.id, papel: 'produtor' }, { $set: alteracoes },
+    { new: true, runValidators: true });
+  if (!produtor) throw erro(404, 'Produtor não encontrado');
+  res.json(produtor.publico());
 }));
 
 module.exports = router;

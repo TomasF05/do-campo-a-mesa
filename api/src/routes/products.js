@@ -20,10 +20,21 @@ const ORDENACAO = {
 };
 router.param('id', parametroId);
 
+function validarPreco(valor, campo) {
+  numero(valor, campo);
+  const texto = String(valor);
+  const [euros, fracao = ''] = texto.split('.');
+  const casas = fracao.padEnd(2, '0');
+  if (!/^\d+(\.\d{1,2})?$/.test(texto) || !Number.isSafeInteger(Number(euros + casas)) || valor.toFixed(2) !== `${euros}.${casas}`) {
+    throw erro(400, `${campo} deve ser representável em cêntimos, com no máximo duas casas decimais`);
+  }
+  return valor;
+}
+
 function dadosProduto(corpo) {
   const dados = campos(corpo, CAMPOS);
   if (!Object.keys(dados).length) throw erro(400, 'Indique os dados do produto');
-  if (dados.preco !== undefined) numero(dados.preco, 'Preço');
+  if (dados.preco !== undefined) validarPreco(dados.preco, 'Preço');
   if (dados.stock !== undefined) numero(dados.stock, 'Stock');
   if (dados.biologico !== undefined && typeof dados.biologico !== 'boolean') throw erro(400, 'Modo biológico inválido');
   return dados;
@@ -35,6 +46,12 @@ router.get('/', a(async (req, res) => {
   if (produtor) id(produtor);
   if (bio !== undefined && !['true', 'false'].includes(bio)) throw erro(400, 'Filtro biológico inválido');
   if (ordenar && !Object.hasOwn(ORDENACAO, ordenar)) throw erro(400, 'Ordenação inválida');
+  let limitePreco;
+  if (precoMax !== undefined && precoMax !== '') {
+    const texto = precoMax.trim();
+    if (!/^(?:\d+(?:\.\d{0,2})?|\.\d{1,2})$/.test(texto)) throw erro(400, 'Preço máximo inválido. Use até duas casas decimais');
+    limitePreco = validarPreco(Number(texto), 'Preço máximo');
+  }
   const filtroProdutores = { papel: 'produtor', 'produtor.validado': true };
   if (localidade) filtroProdutores['produtor.localidade'] = localidade;
   const produtores = await User.find(filtroProdutores).select('_id nome');
@@ -43,10 +60,10 @@ router.get('/', a(async (req, res) => {
   const filtro = { produtor: produtor || { $in: ids } };
   if (q) {
     const regex = new RegExp(escaparRegex(q.trim()), 'i');
-    filtro.$or = [{ nome: regex }, { produtor: { $in: produtores.filter((p) => regex.test(p.nome)).map((p) => p._id) } }];
+    filtro.$or = [{ nome: regex }, { descricao: regex }, { produtor: { $in: produtores.filter((p) => regex.test(p.nome)).map((p) => p._id) } }];
   }
   if (categoria && categoria !== 'Todos') filtro.categoria = categoria;
-  if (precoMax !== undefined && precoMax !== '') filtro.preco = { $lte: numero(Number(precoMax), 'Preço máximo') };
+  if (limitePreco !== undefined) filtro.preco = { $lte: limitePreco };
   if (bio === 'true') filtro.biologico = true;
   if (epoca) filtro.epocas = { $in: [epoca] };
   res.json(await Product.find(filtro).sort(ORDENACAO[ordenar] || ORDENACAO.recentes).populate('produtor', POPULATE));

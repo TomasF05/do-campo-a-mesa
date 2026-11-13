@@ -54,8 +54,8 @@ export default function Catalogo() {
       </section>
 
       <section className="filtros mb-3" aria-label="Filtros">
-        <label className="visually-hidden" htmlFor="pesquisa">Pesquisar</label>
-        <input id="pesquisa" type="search" className="form-control" placeholder="Pesquisar kiwi, mel, Alvarinho…"
+        <label className="visually-hidden" htmlFor="pesquisa">Pesquisar por produto, descrição ou produtor</label>
+        <input id="pesquisa" type="search" className="form-control" placeholder="Pesquisar produto, descrição ou produtor…"
           value={filtro.q} onChange={mudar('q')} />
         <div className="filtros__categorias d-flex flex-wrap gap-2">
           {['Todos', ...CATEGORIAS].map((c) => (
@@ -85,7 +85,7 @@ export default function Catalogo() {
       </div>
 
       <EstadoPedido aCarregar={aCarregar} erro={erro} />
-      <p className="small texto-secundario" role="status">{aviso || (!aCarregar && !erro ? `${produtos.length} produtos encontrados.` : '')}</p>
+      <p className="small texto-secundario" role="status">{aviso || (!aCarregar && !erro ? (produtos.length === 1 ? '1 produto encontrado.' : `${produtos.length} produtos encontrados.`) : '')}</p>
 
       <section className="grelha-produtos" aria-labelledby="titulo-produtos">
         <h2 id="titulo-produtos" className="visually-hidden">Produtos</h2>

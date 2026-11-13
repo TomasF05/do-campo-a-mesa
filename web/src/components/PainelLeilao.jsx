@@ -5,6 +5,10 @@ import { useContagem, formatarTempo } from '../hooks/useContagem.js';
 export default function PainelLeilao({ leilao, atual, participantes, podeLicitar, comprador, licitar, erro, mensagem, aviso, relogio, ligado, aEnviar }) {
   const [valor, setValor] = useState('');
   const restante = useContagem(leilao.estado === 'agendado' ? leilao.iniciaEm : leilao.terminaEm, relogio);
+  const terminado = leilao.estado === 'terminado';
+  const numLicitacoes = leilao.numLicitacoes ?? 0;
+  const semVencedor = terminado && !atual?.comprador;
+  const valorApresentado = semVencedor ? leilao.precoBase : (atual?.valor ?? leilao.precoBase);
   const atualCentimos = Math.round((atual?.valor ?? leilao.precoBase) * 100);
   const incremento = Math.round(leilao.incremento * 100);
   const minimo = atualCentimos + incremento;
@@ -18,14 +22,15 @@ export default function PainelLeilao({ leilao, atual, participantes, podeLicitar
   }
   return <aside className="card p-3" aria-label="Painel de licitação">
     <p>{ligado ? `${participantes} a assistir` : 'Participantes indisponíveis'}</p>
-    <p className="texto-secundario">{leilao.estado === 'terminado' ? 'Leilão terminado' : `${leilao.estado === 'agendado' ? 'Começa em' : 'Tempo restante'}: ${formatarTempo(restante)}`}</p>
-    {!relogio && leilao.estado !== 'terminado' && <p className="small">Tempo estimado: hora do servidor ainda indisponível.</p>}
-    {relogio && leilao.estado !== 'terminado' && <p className="small">Contagem baseada na última sincronização com o servidor.</p>}
-    <p className="mb-0">{leilao.estado === 'terminado' ? 'Valor final' : 'Licitação atual'}</p><p className="valor-atual">{euro(atual?.valor ?? leilao.precoBase)}</p>
-    <p>{leilao.numLicitacoes || 0} licitações</p>
-    {leilao.estado !== 'terminado' && restante === 0 && <p role="status">{leilao.estado === 'agendado' ? 'A aguardar abertura pelo servidor.' : 'Prazo atingido. A aguardar confirmação do servidor.'}</p>}
+    <p className="texto-secundario">{terminado ? 'Leilão terminado' : `${leilao.estado === 'agendado' ? 'Começa em' : 'Tempo restante'}: ${formatarTempo(restante)}`}</p>
+    {!relogio && !terminado && <p className="small">Tempo estimado: hora do servidor ainda indisponível.</p>}
+    {relogio && !terminado && <p className="small">Contagem baseada na última sincronização com o servidor.</p>}
+    <p className="mb-0">{semVencedor ? 'Preço base' : terminado ? 'Valor final' : 'Licitação atual'}</p>
+    <p className="valor-atual">{euro(valorApresentado)}</p>
+    <p>{numLicitacoes} {numLicitacoes === 1 ? 'licitação' : 'licitações'}</p>
+    {!terminado && restante === 0 && <p role="status">{leilao.estado === 'agendado' ? 'A aguardar abertura pelo servidor.' : 'Prazo atingido. A aguardar confirmação do servidor.'}</p>}
     <p className="small">Incremento mínimo: {euro(leilao.incremento)}</p>
-    {leilao.estado !== 'terminado' && <form onSubmit={submeter}>
+    {!terminado && <form onSubmit={submeter}>
       <div className="d-flex flex-wrap gap-2 mb-3">{[1, 2, 5].map((k) => <button key={k} type="button" className="btn btn-sm btn-outline-primary" disabled={!ativo || aEnviar}
         onClick={() => setValor(((atualCentimos + k * incremento) / 100).toFixed(2))}>+{euro(k * incremento / 100)}</button>)}</div>
       <label htmlFor="valor" className="form-label">O seu valor (€)</label>

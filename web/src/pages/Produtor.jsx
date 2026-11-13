@@ -45,12 +45,10 @@ export default function Produtor() {
     <>
       <section className="mb-4">
         <h1>{produtor.nome}</h1>
-
-        <p className="texto-secundario">
-          {produtor.produtor?.localidade}
-        </p>
-        <p>{produtor.produtor?.descricao}</p>
-        <a className="btn btn-outline-primary" href={`https://www.openstreetmap.org/search?query=${encodeURIComponent(produtor.produtor?.localidade || '')}`} target="_blank" rel="noreferrer">Ver localidade no mapa</a>
+        {produtor.produtor?.nomeExploracao && produtor.produtor.nomeExploracao !== produtor.nome && <p className="fw-semibold mb-1">{produtor.produtor.nomeExploracao}</p>}
+        {produtor.produtor?.localidade && <p className="texto-secundario">{produtor.produtor.localidade}</p>}
+        {produtor.produtor?.descricao && <p className="text-break">{produtor.produtor.descricao}</p>}
+        {produtor.produtor?.localidade && <a className="btn btn-outline-primary" href={`https://www.openstreetmap.org/search?query=${encodeURIComponent(produtor.produtor.localidade)}`} target="_blank" rel="noreferrer">Ver localidade no mapa</a>}
       </section>
 
       <section aria-labelledby="produtos-produtor">
@@ -67,7 +65,7 @@ export default function Produtor() {
         {produtosDoProdutor.length === 0 && <p>Este produtor ainda não tem produtos disponíveis.</p>}
       </section>
       <section className="mt-4" aria-labelledby="avaliacoes-produtor">
-        <h2 id="avaliacoes-produtor" className="h4">Avaliações · {dados.avaliacaoMedia}/5</h2>
+        <h2 id="avaliacoes-produtor" className="h4">Avaliações{Number.isFinite(dados.avaliacaoMedia) && ` · ${dados.avaliacaoMedia.toLocaleString('pt-PT')}/5`}</h2>
         {falhaDenuncia && <p className="alert alert-danger" role="alert">{falhaDenuncia}</p>}
         {dados.avaliacoes?.length === 0 && <p>Ainda não existem avaliações.</p>}
         {dados.avaliacoes?.map((a) => {

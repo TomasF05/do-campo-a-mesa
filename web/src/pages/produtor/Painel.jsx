@@ -109,6 +109,7 @@ export default function PainelProdutor() {
       <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <h1 className="mb-0">Painel do produtor</h1>
         <div className="d-flex flex-wrap gap-2">
+          <Link to="/produtor/perfil" className="btn btn-outline-primary">Editar perfil público</Link>
           {estadoProdutor === 'aprovado' && <><Link to="/produtor/produtos" className="btn btn-outline-primary">Os meus produtos</Link><Link to="/produtor/leiloes/novo" className="btn btn-success">Criar leilão</Link></>}
         </div>
       </div>
