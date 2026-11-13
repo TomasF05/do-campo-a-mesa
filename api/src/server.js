@@ -6,10 +6,12 @@ const app = require('./app');
 const { ligarBD } = require('./config/db');
 const registarSockets = require('./sockets');
 const { iniciarCiclo } = require('./services/cicloLeiloes');
+const { validarArmazenamento } = require('./services/imagens');
 
 const PORT = process.env.PORT || 3000;
 
 async function iniciar() {
+  validarArmazenamento();
   await ligarBD();
 
   const server = http.createServer(app);
