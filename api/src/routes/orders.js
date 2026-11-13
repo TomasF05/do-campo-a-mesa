@@ -1,7 +1,8 @@
 // Encomendas
+const { createHash } = require('node:crypto');
 const router = require('express').Router();
 const auth = require('../middleware/auth');
-const mongoose = require('mongoose');
+const Checkout = require('../models/Checkout');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const User = require('../models/User');
@@ -14,6 +15,13 @@ const POPULATE = [
   { path: 'comprador', select: 'nome' }
 ];
 const doUtilizador = (u) => u.papel === 'produtor' ? { produtor: u.id } : { comprador: u.id };
+
+async function repetirCheckout(registo, assinatura, session = null) {
+  if (registo.assinatura !== assinatura) throw erro(409, 'Esta chave de checkout já foi utilizada com outros dados');
+  const encomendas = await Order.find({ _id: { $in: registo.encomendas } }).session(session);
+  const porId = new Map(encomendas.map((e) => [e.id, e]));
+  return { encomendas: registo.encomendas.map((id) => porId.get(id.toString())), novo: false };
+}
 
 // POST /api/orders  (comprador)  -> 201
 router.post('/', auth('comprador'), a(async (req, res) => {
@@ -28,47 +36,67 @@ router.post('/', auth('comprador'), a(async (req, res) => {
   const quantidades = new Map();
   for (const linha of corpo.linhas) {
     campos(linha, ['produto', 'quantidade']);
-    id(linha.produto);
+    const produto = id(linha.produto).toLowerCase();
     if (!Number.isSafeInteger(linha.quantidade) || linha.quantidade < 1) throw erro(400, 'Quantidade inválida');
-    const q = (quantidades.get(linha.produto) || 0) + linha.quantidade;
+    const q = (quantidades.get(produto) || 0) + linha.quantidade;
     if (!Number.isSafeInteger(q)) throw erro(400, 'Quantidade inválida');
-    quantidades.set(linha.produto, q);
+    quantidades.set(produto, q);
   }
-  const produtores = await User.find({ papel: 'produtor', 'produtor.validado': true }).distinct('_id');
-  const reservas = [];
-  const novas = [];
-  let criadas;
+  const chave = req.get('Idempotency-Key');
+  if (chave !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(chave)) throw erro(400, 'Chave de checkout inválida');
+  const checkoutId = chave && `${req.user.id}:${chave}`;
+  const assinatura = checkoutId && createHash('sha256')
+    .update(JSON.stringify([[...quantidades].sort(), entrega.tipo, entrega.morada])).digest('hex');
+
+  let resultado;
   try {
-    const porProdutor = new Map();
-    for (const [produto, q] of quantidades) {
-      const p = await Product.findOneAndUpdate(
-        { _id: produto, produtor: { $in: produtores }, stock: { $gte: q } },
-        { $inc: { stock: -q } }, { new: true }
-      );
-      if (!p) {
-        const existe = await Product.findOne({ _id: produto, produtor: { $in: produtores } }).select('nome');
-        throw erro(existe ? 409 : 404, existe ? `Stock insuficiente: ${existe.nome}` : 'Produto não encontrado');
+    resultado = await Order.db.transaction(async (session) => {
+      if (checkoutId) {
+        const registo = await Checkout.findById(checkoutId).session(session).lean();
+        if (registo) return repetirCheckout(registo, assinatura, session);
+        await Checkout.create([{ _id: checkoutId, assinatura }], { session });
       }
-      reservas.push({ id: p._id, q });
-      const chave = p.produtor.toString();
-      if (!porProdutor.has(chave)) porProdutor.set(chave, []);
-      porProdutor.get(chave).push({ produto: p._id, nome: p.nome, precoUnit: p.preco, unidade: p.unidade, quantidade: q });
-    }
-    novas.push(...[...porProdutor].map(([produtor, linhas]) => ({
-      _id: new mongoose.Types.ObjectId(), comprador: req.user.id, produtor, linhas, entrega
-    })));
-    criadas = await Order.insertMany(novas);
+      const produtores = await User.find({ papel: 'produtor', 'produtor.validado': true }).distinct('_id').session(session);
+      const porProdutor = new Map();
+      for (const [produto, q] of quantidades) {
+        const p = await Product.findOneAndUpdate(
+          { _id: produto, produtor: { $in: produtores }, stock: { $gte: q } },
+          { $inc: { stock: -q } }, { new: true, session }
+        );
+        if (!p) {
+          const existe = await Product.findOne({ _id: produto, produtor: { $in: produtores } }).select('nome').session(session);
+          throw erro(existe ? 409 : 404, existe ? `Stock insuficiente: ${existe.nome}` : 'Produto não encontrado');
+        }
+        const produtor = p.produtor.toString();
+        if (!porProdutor.has(produtor)) porProdutor.set(produtor, []);
+        porProdutor.get(produtor).push({ produto: p._id, nome: p.nome, precoUnit: p.preco, unidade: p.unidade, quantidade: q });
+      }
+      const novas = [...porProdutor].map(([produtor, linhas]) => ({ comprador: req.user.id, produtor, linhas, entrega }));
+      const encomendas = await Order.insertMany(novas, { session });
+      if (checkoutId) {
+        await Checkout.updateOne({ _id: checkoutId }, { $set: { encomendas: encomendas.map((e) => e._id) } }, { session });
+      }
+      return { encomendas, novo: true };
+    }, {
+      readPreference: 'primary', readConcern: { level: 'snapshot' },
+      writeConcern: { w: 'majority' }, timeoutMS: 15000
+    });
   } catch (err) {
-    // Compensação do guia: não deixar encomendas parciais nem stock reservado.
-    if (novas.length) await Order.deleteMany({ _id: { $in: novas.map((o) => o._id) } });
-    for (const r of reservas) await Product.updateOne({ _id: r.id }, { $inc: { stock: r.q } });
-    throw err;
+    // Outra transação pode ter confirmado esta chave entretanto.
+    if (!checkoutId || err.code !== 11000) throw err;
+    const registo = await Checkout.findById(checkoutId).readConcern('majority').lean();
+    if (!registo) throw err;
+    resultado = await repetirCheckout(registo, assinatura);
   }
-  const io = req.app.get('io');
-  for (const e of criadas) notificar(io, `user:${e.produtor}`, 'nova-encomenda', { id: e._id, total: e.total });
-  notificar(io, `user:${req.user.id}`, 'painel-atualizado', { recurso: 'encomendas' });
-  notificar(io, 'admin', 'painel-atualizado', { recurso: 'encomendas' });
-  res.status(201).location('/api/orders').json(criadas);
+
+  // A transação pode repetir o callback ou o commit. Só notifica após a confirmação.
+  if (resultado.novo) {
+    const io = req.app.get('io');
+    for (const e of resultado.encomendas) notificar(io, `user:${e.produtor}`, 'nova-encomenda', { id: e._id, total: e.total });
+    notificar(io, `user:${req.user.id}`, 'painel-atualizado', { recurso: 'encomendas' });
+    notificar(io, 'admin', 'painel-atualizado', { recurso: 'encomendas' });
+  }
+  res.status(201).location('/api/orders').json(resultado.encomendas);
 }));
 
 // GET /api/orders  -> 200 [encomendas do utilizador: como comprador ou como produtor]

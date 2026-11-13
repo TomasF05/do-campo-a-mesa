@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useCarrinho } from '../context/CarrinhoContext.jsx';
 
 export default function Navbar() {
-  const { utilizador, sair } = useAuth();
+  const { utilizador, sair, estadoSessao } = useAuth();
   const { linhas } = useCarrinho();
 
   return (
@@ -32,7 +32,7 @@ export default function Navbar() {
             {utilizador?.papel === 'comprador' && (
               <Link to="/carrinho" className="btn btn-outline-secondary">Carrinho ({linhas.length})</Link>
             )}
-            {utilizador ? (
+            {estadoSessao !== 'sem-sessao' ? (
               <button type="button" className="btn btn-outline-secondary" onClick={sair}>Sair</button>
             ) : (
               <>

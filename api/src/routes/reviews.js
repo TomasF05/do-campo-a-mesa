@@ -6,9 +6,10 @@ const { notificar } = require('../services/notificacoes');
 const { a, erro, id, parametroId, campos, query } = require('../utils/http');
 
 router.param('id', parametroId);
+const comprador = auth('comprador');
 
 // POST /api/reviews  (comprador, só após encomenda entregue)  -> 201
-router.post('/', auth('comprador'), a(async (req, res) => {
+router.post('/', comprador, a(async (req, res) => {
   const dados = campos(req.body, ['encomenda', 'produto', 'classificacao', 'comentario']);
   id(dados.encomenda);
   if (dados.produto !== undefined) id(dados.produto);
@@ -24,9 +25,13 @@ router.post('/', auth('comprador'), a(async (req, res) => {
   res.status(201).json(avaliacao);
 }));
 
-// GET /api/reviews?produtor=&produto=  -> 200 [avaliações visíveis]
-router.get('/', a(async (req, res) => {
-  const { produtor, produto } = query(req);
+// A consulta privada inclui as avaliações ocultadas para preservar a elegibilidade.
+router.get('/', (req, res, next) => req.query.minhas === 'true' ? comprador(req, res, next) : next(), a(async (req, res) => {
+  const { produtor, produto, minhas } = query(req);
+  if (minhas === 'true') {
+    res.set('Cache-Control', 'private, no-store');
+    return res.json(await Review.find({ autor: req.user.id }).select('encomenda produto').lean());
+  }
   const filtro = { visivel: true };
   if (produtor) filtro.produtor = id(produtor);
   if (produto) filtro.produto = id(produto);
@@ -35,9 +40,13 @@ router.get('/', a(async (req, res) => {
 
 // POST /api/reviews/:id/denuncia  -> 204
 router.post('/:id/denuncia', auth(), a(async (req, res) => {
-  const r = await Review.findOneAndUpdate({ _id: req.params.id, visivel: true }, { $inc: { denuncias: 1 } });
-  if (!r) throw erro(404, 'Avaliação não encontrada');
-  notificar(req.app.get('io'), 'admin', 'painel-atualizado', { recurso: 'avaliacoes' });
+  const visivel = { _id: req.params.id, visivel: true };
+  // A condição e as duas escritas são atómicas no mesmo documento.
+  const resultado = await Review.updateOne({ ...visivel, denunciantes: { $ne: req.user.id } }, {
+    $addToSet: { denunciantes: req.user.id }, $inc: { denuncias: 1 }
+  });
+  if (resultado.modifiedCount) notificar(req.app.get('io'), 'admin', 'painel-atualizado', { recurso: 'avaliacoes' });
+  else if (!await Review.exists(visivel)) throw erro(404, 'Avaliação não encontrada');
   res.status(204).end();
 }));
 

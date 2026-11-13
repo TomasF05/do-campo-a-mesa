@@ -19,6 +19,23 @@
 
 .formulario-estreito { max-width: 28rem; margin-inline: auto; }
 
+.notificacoes {
+  max-height: 30vh;
+  max-height: min(14rem, 30dvh);
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+
+  .toast { width: 100%; }
+
+  @include a-partir-de(md) {
+    position: fixed;
+    inset: auto 0 0 auto;
+    z-index: 1080;
+    width: 24rem;
+    max-height: 100dvh;
+  }
+}
+
 .estado-encomenda {
   display: flex; justify-content: space-between; list-style: none; padding: 0; margin: 0;
   li { color: $texto-secundario; text-transform: capitalize; }

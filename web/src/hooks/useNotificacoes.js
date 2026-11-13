@@ -81,7 +81,7 @@ export function useNotificacoes() {
   useEventoSocket('conta-validada', useCallback((e) => {
     if (papel !== 'produtor' || e.id !== meuId) return;
     mostrar(`conta:${e.id}:${e.updatedAt}`, 'A sua conta de produtor foi aprovada.', '/produtor');
-    atualizar();
+    atualizar({ substituir: true });
   }, [papel, meuId, mostrar, atualizar]));
   useEventoSocket('aberto', useCallback((e) => {
     mostrar(`aberto:${e.id}`, 'O leilão que está a acompanhar abriu.', `/leiloes/${e.id}`);
@@ -90,8 +90,12 @@ export function useNotificacoes() {
     mostrar(`fim:${e.id}`, `O leilão \"${e.lote}\" terminou${e.vencedor ? ` por ${euro(e.valor)}` : ' sem vencedor'}.`, `/leiloes/${e.id}`);
   }, [mostrar]));
   useEventoSocket('painel-atualizado', useCallback((e) => {
-    if (papel === 'produtor' && e.recurso === 'conta') atualizar();
-  }, [papel, atualizar]));
+    if (papel !== 'produtor' || e.recurso !== 'conta') return;
+    if (e.id === meuId && e.estadoValidacao === 'rejeitado') {
+      mostrar(`conta:${e.id}:${e.updatedAt}`, 'A sua conta de produtor foi rejeitada.', '/produtor');
+    }
+    atualizar({ substituir: true });
+  }, [papel, meuId, mostrar, atualizar]));
 
   useEffect(() => {
     if (papel !== 'produtor' || !socket) return undefined;

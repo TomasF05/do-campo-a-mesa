@@ -11,6 +11,14 @@ const { a, erro, parametroId, campos } = require('../utils/http');
 router.use(auth('admin'));
 router.param('id', parametroId);
 
+const PENDENTES = {
+  papel: 'produtor',
+  $or: [
+    { 'produtor.estadoValidacao': 'pendente' },
+    { 'produtor.estadoValidacao': null, 'produtor.validado': { $ne: true } }
+  ]
+};
+
 // GET /api/admin/estatisticas  -> 200 { utilizadores, produtores, encomendasHoje, leiloesAtivos }
 router.get('/estatisticas', a(async (req, res) => {
   const inicio = new Date(); inicio.setHours(0, 0, 0, 0);
@@ -25,22 +33,30 @@ router.get('/estatisticas', a(async (req, res) => {
 
 // GET /api/admin/produtores/pendentes  -> 200 [produtores por validar]
 router.get('/produtores/pendentes', a(async (req, res) => {
-  res.json(await User.find({ papel: 'produtor', 'produtor.validado': false }).select('nome email produtor').sort({ createdAt: 1 }));
+  const pendentes = await User.find(PENDENTES).select('nome email produtor').sort({ createdAt: 1 }).lean();
+  res.json(pendentes.map((p) => ({ ...p, produtor: User.normalizarProdutor(p.produtor) })));
 }));
 
 // PATCH /api/admin/produtores/:id/validacao  { aprovado: true|false }  -> 200
 router.patch('/produtores/:id/validacao', a(async (req, res) => {
   const { aprovado } = campos(req.body, ['aprovado']);
   if (typeof aprovado !== 'boolean') throw erro(400, 'Indique aprovado como true ou false');
-  const produtor = await User.findOneAndUpdate({ _id: req.params.id, papel: 'produtor', 'produtor.validado': { $ne: aprovado } }, { 'produtor.validado': aprovado }, { new: true, runValidators: true }).select('nome email produtor updatedAt');
+  const estadoValidacao = aprovado ? 'aprovado' : 'rejeitado';
+  const produtor = await User.findOneAndUpdate({ _id: req.params.id, ...PENDENTES }, {
+    $set: { 'produtor.estadoValidacao': estadoValidacao, 'produtor.validado': aprovado }
+  }, { new: true, runValidators: true }).select('nome email produtor updatedAt');
   if (!produtor) {
-    const atual = await User.findOne({ _id: req.params.id, papel: 'produtor' }).select('nome email produtor');
+    const atual = await User.findOne({ _id: req.params.id, papel: 'produtor' }).select('nome email produtor updatedAt').lean();
     if (!atual) throw erro(404, 'Produtor não encontrado');
-    return res.json(atual);
+    const dados = User.normalizarProdutor(atual.produtor);
+    if (dados.estadoValidacao !== estadoValidacao) throw erro(409, 'Este produtor já tem uma decisão de validação');
+    return res.json({ ...atual, produtor: dados });
   }
-  if (aprovado) notificar(req.app.get('io'), `user:${produtor._id}`, 'conta-validada', { id: produtor._id, updatedAt: produtor.updatedAt });
-  else notificar(req.app.get('io'), `user:${produtor._id}`, 'painel-atualizado', { recurso: 'conta' });
-  notificar(req.app.get('io'), 'admin', 'painel-atualizado', { recurso: 'produtores' });
+  const io = req.app.get('io');
+  const conta = { id: produtor._id, updatedAt: produtor.updatedAt };
+  if (aprovado) notificar(io, `user:${produtor._id}`, 'conta-validada', conta);
+  else notificar(io, `user:${produtor._id}`, 'painel-atualizado', { recurso: 'conta', estadoValidacao, ...conta });
+  notificar(io, 'admin', 'painel-atualizado', { recurso: 'produtores' });
   res.json(produtor);
 }));
 

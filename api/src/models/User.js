@@ -13,11 +13,20 @@ const userSchema = new Schema({
     descricao: { type: String, maxlength: 1000 },
     localidade: String,
     localizacao: { lat: Number, lng: Number },
-    validado: { type: Boolean, default: false } // o administrador valida o registo
+    validado: { type: Boolean, default: false },
+    estadoValidacao: { type: String, enum: ['pendente', 'aprovado', 'rejeitado'] }
   }
 }, { timestamps: true });
 
 userSchema.index({ papel: 1, 'produtor.validado': 1, 'produtor.localidade': 1 });
+
+function normalizarProdutor(produtor) {
+  // O estado é inferido na leitura dos registos anteriores, sem os gravar.
+  const estadoValidacao = produtor?.estadoValidacao ?? (produtor?.validado === true ? 'aprovado' : 'pendente');
+  return { ...produtor, estadoValidacao, validado: estadoValidacao === 'aprovado' };
+}
+
+userSchema.statics.normalizarProdutor = normalizarProdutor;
 
 userSchema.methods.publico = function publico() {
   return {
@@ -25,7 +34,7 @@ userSchema.methods.publico = function publico() {
     nome: this.nome,
     email: this.email,
     papel: this.papel,
-    ...(this.papel === 'produtor' ? { produtor: this.produtor } : {})
+    ...(this.papel === 'produtor' ? { produtor: normalizarProdutor(this.toObject().produtor) } : {})
   };
 };
 

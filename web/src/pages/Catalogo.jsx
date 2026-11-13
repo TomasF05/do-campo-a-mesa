@@ -5,6 +5,7 @@ import { useCarrinho } from '../context/CarrinhoContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { api } from '../api/client.js';
 import { useApi } from '../hooks/useApi.js';
+import { useLeiloesPublicos } from '../hooks/useLeiloesPublicos.js';
 import CartaoLeilao from '../components/CartaoLeilao.jsx';
 import EstadoPedido from '../components/EstadoPedido.jsx';
 import { CATEGORIAS, EPOCAS } from '../utils.js';
@@ -15,7 +16,7 @@ export default function Catalogo() {
   const [erro, setErro] = useState('');
   const [aCarregar, setACarregar] = useState(true);
   const [aviso, setAviso] = useState('');
-  const { dados: leiloes } = useApi('/auctions');
+  const { dados: leiloes } = useLeiloesPublicos();
   const { dados: produtores } = useApi('/producers');
   const destaque = leiloes?.find((l) => l.estado === 'ativo');
   const carrinho = useCarrinho();
@@ -53,8 +54,8 @@ export default function Catalogo() {
       </section>
 
       <section className="filtros mb-3" aria-label="Filtros">
-        <label className="visually-hidden" htmlFor="pesquisa">Pesquisar</label>
-        <input id="pesquisa" type="search" className="form-control" placeholder="Pesquisar kiwi, mel, Alvarinho…"
+        <label className="visually-hidden" htmlFor="pesquisa">Pesquisar por produto, descrição ou produtor</label>
+        <input id="pesquisa" type="search" className="form-control" placeholder="Pesquisar produto, descrição ou produtor…"
           value={filtro.q} onChange={mudar('q')} />
         <div className="filtros__categorias d-flex flex-wrap gap-2">
           {['Todos', ...CATEGORIAS].map((c) => (
@@ -84,7 +85,7 @@ export default function Catalogo() {
       </div>
 
       <EstadoPedido aCarregar={aCarregar} erro={erro} />
-      <p className="small texto-secundario" role="status">{aviso || (!aCarregar && !erro ? `${produtos.length} produtos encontrados.` : '')}</p>
+      <p className="small texto-secundario" role="status">{aviso || (!aCarregar && !erro ? (produtos.length === 1 ? '1 produto encontrado.' : `${produtos.length} produtos encontrados.`) : '')}</p>
 
       <section className="grelha-produtos" aria-labelledby="titulo-produtos">
         <h2 id="titulo-produtos" className="visually-hidden">Produtos</h2>
