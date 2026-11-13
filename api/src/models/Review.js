@@ -9,6 +9,7 @@ const reviewSchema = new Schema({
   classificacao: { type: Number, min: 1, max: 5, required: true, validate: { validator: Number.isInteger, message: 'A classificação tem de ser um número inteiro' } },
   comentario: { type: String, trim: true, maxlength: 1000 },
   denuncias: { type: Number, default: 0, min: 0 },
+  denunciantes: { type: [Types.ObjectId], select: false, default: undefined },
   visivel: { type: Boolean, default: true }
 }, { timestamps: true });
 
