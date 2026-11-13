@@ -2,20 +2,26 @@
 import { useCallback, useState } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
+import { useApiVisivel } from '../../hooks/useApiVisivel.js';
+import { useLeiloesPublicos } from '../../hooks/useLeiloesPublicos.js';
 import { useAtualizacaoSocket } from '../../hooks/useNotificacoes.js';
 import { api } from '../../api/client.js';
 import Indicadores from '../../components/Indicadores.jsx';
 import EstadoPedido from '../../components/EstadoPedido.jsx';
-import CartaoLeilao from '../../components/CartaoLeilao.jsx';
+import { ListaLeiloesPainel } from '../../components/CartaoLeilao.jsx';
+
+const EVENTOS_ESTATISTICAS = {
+  'painel-atualizado': (e) => ['utilizadores', 'produtores', 'encomendas', 'leiloes'].includes(e?.recurso)
+};
 
 export default function PainelAdmin() {
   const { token } = useAuth();
-  const estatisticas = useApi('/admin/estatisticas');
+  const estatisticas = useApiVisivel('/admin/estatisticas', { token, eventos: EVENTOS_ESTATISTICAS });
   const pendentes = useApi('/admin/produtores/pendentes');
   const reviews = useApi('/admin/reviews/denunciadas');
-  const leiloes = useApi('/auctions');
-  const atualizarPainel = useCallback(() => Promise.all([estatisticas.recarregar(), pendentes.recarregar(), reviews.recarregar(), leiloes.recarregar()]), [estatisticas.recarregar, pendentes.recarregar, reviews.recarregar, leiloes.recarregar]);
-  useAtualizacaoSocket('painel-atualizado|aberto|terminado', atualizarPainel);
+  const leiloes = useLeiloesPublicos({ avisarFalha: true });
+  const atualizarPainel = useCallback(() => Promise.all([pendentes.recarregar(), reviews.recarregar()]), [pendentes.recarregar, reviews.recarregar]);
+  useAtualizacaoSocket('painel-atualizado', atualizarPainel);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const [aGuardar, setAGuardar] = useState(false);
@@ -29,7 +35,7 @@ export default function PainelAdmin() {
       <h1>Administração</h1>
       <EstadoPedido aCarregar={estatisticas.aCarregar || pendentes.aCarregar || reviews.aCarregar} erro={erro || estatisticas.erro || pendentes.erro || reviews.erro} />
       {estatisticas.dados && <Indicadores itens={[
-        ['Utilizadores', estatisticas.dados.utilizadores], ['Produtores', estatisticas.dados.produtores], ['Encomendas', estatisticas.dados.encomendasHoje], ['Leilões ativos', estatisticas.dados.leiloesAtivos]
+        ['Utilizadores', estatisticas.dados.utilizadores], ['Produtores', estatisticas.dados.produtores], ['Encomendas hoje', estatisticas.dados.encomendasHoje], ['Leilões ativos', estatisticas.dados.leiloesAtivos]
       ]} />}
       <p role="status">{aviso}</p>
       <div className="painel-colunas"><div>
@@ -44,8 +50,8 @@ export default function PainelAdmin() {
             <button className="btn btn-outline-danger" type="button" disabled={aGuardar} onClick={() => decidir(`/admin/reviews/${r._id}`, { visivel: false }, 'Avaliação ocultada.')}>Ocultar avaliação</button>
           </article>)}{reviews.dados?.length === 0 && <p>Não há avaliações por rever.</p>}
         </section>
-      </div><section aria-labelledby="leiloes-admin"><h2 id="leiloes-admin" className="h4">Leilões ativos</h2>
-        {leiloes.dados?.filter((l) => l.estado === 'ativo').map((l) => <div key={l._id} className="mb-3"><CartaoLeilao leilao={l} /></div>)}
+      </div><section aria-labelledby="leiloes-admin"><h2 id="leiloes-admin" className="h4">Leilões</h2>
+        <ListaLeiloesPainel {...leiloes} />
       </section></div>
     </>
   );

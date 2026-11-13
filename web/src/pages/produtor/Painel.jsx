@@ -1,14 +1,16 @@
 // Produtor: painel de gestão
 import { Link } from 'react-router-dom';
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useApi } from '../../hooks/useApi.js';
+import { useApiVisivel } from '../../hooks/useApiVisivel.js';
+import { useLeiloesPublicos } from '../../hooks/useLeiloesPublicos.js';
 import { useAtualizacaoSocket } from '../../hooks/useNotificacoes.js';
 import { api } from '../../api/client.js';
 import { euro, totalEncomenda } from '../../utils.js';
 import Indicadores from '../../components/Indicadores.jsx';
 import EstadoPedido from '../../components/EstadoPedido.jsx';
-import CartaoLeilao from '../../components/CartaoLeilao.jsx';
+import { ListaLeiloesPainel } from '../../components/CartaoLeilao.jsx';
 
 const ESTADOS = ['pendente', 'confirmada', 'pronta', 'entregue'];
 const DATA_ENCOMENDA = new Intl.DateTimeFormat('pt-PT', { dateStyle: 'medium', timeStyle: 'short' });
@@ -16,6 +18,11 @@ const ESTADO_CONTA = {
   pendente: 'A sua conta de produtor aguarda validação pelo administrador.',
   aprovado: 'A sua conta de produtor está aprovada.',
   rejeitado: 'A sua conta de produtor foi rejeitada pelo administrador.'
+};
+const EVENTOS_PERFIL = {
+  'nova-encomenda': () => true,
+  'conta-validada': () => true,
+  'painel-atualizado': (e) => e?.recurso === 'encomendas' || e?.recurso === 'conta'
 };
 
 function EncomendaRecebida({ encomenda, avancar }) {
@@ -77,15 +84,22 @@ function EncomendaRecebida({ encomenda, avancar }) {
 
 export default function PainelProdutor() {
   const { utilizador, token, estadoProdutor } = useAuth();
-  const produtos = useApi(`/products?produtor=${utilizador._id}`);
+  const perfil = useApiVisivel(estadoProdutor === 'aprovado' ? `/producers/${encodeURIComponent(utilizador._id)}` : null,
+    { token, eventos: EVENTOS_PERFIL });
   const encomendas = useApi('/orders');
-  const leiloes = useApi('/auctions');
-  const atualizarPainel = useCallback(() => Promise.all([produtos.recarregar(), encomendas.recarregar(), leiloes.recarregar()]), [produtos.recarregar, encomendas.recarregar, leiloes.recarregar]);
-  useAtualizacaoSocket('nova-encomenda|leilao-terminado|conta-validada|painel-atualizado|aberto|terminado', atualizarPainel);
+  const leiloes = useLeiloesPublicos({ produtor: utilizador._id, avisarFalha: true });
+  useAtualizacaoSocket('nova-encomenda|leilao-terminado|painel-atualizado', encomendas.recarregar);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const lista = encomendas.dados || [];
-  const stockBaixo = (produtos.dados || []).filter((p) => p.stock < 10);
+  const produtos = perfil.dados?.produtos;
+  const stockBaixo = (produtos || []).filter((p) => p.stock < 10);
+  const media = perfil.dados?.avaliacaoMedia;
+  const totalAvaliacoes = perfil.dados?.totalAvaliacoes;
+  const contagem = totalAvaliacoes === 1 ? '1 avaliação' : `${totalAvaliacoes} avaliações`;
+  const avaliacoes = Number.isFinite(media) ? <>
+    {media.toLocaleString('pt-PT')}/5 <small className="d-block fs-6 texto-secundario">{contagem}</small>
+  </> : totalAvaliacoes === 0 ? '0 avaliações' : '—';
   async function avancar(id, estado) {
     try { await api(`/orders/${id}/estado`, { metodo: 'PATCH', token, corpo: { estado } }); setAviso('Estado da encomenda atualizado.'); encomendas.recarregar(); }
     catch (err) { setErro(err.message); }
@@ -99,11 +113,12 @@ export default function PainelProdutor() {
         </div>
       </div>
       <p className={estadoProdutor === 'aprovado' ? 'texto-secundario' : 'alert alert-warning'} role="status">{ESTADO_CONTA[estadoProdutor]}</p>
-      <EstadoPedido aCarregar={produtos.aCarregar || encomendas.aCarregar} erro={erro || produtos.erro || encomendas.erro} />
+      <EstadoPedido aCarregar={perfil.aCarregar || encomendas.aCarregar} erro={erro || perfil.erro || encomendas.erro} />
       <p role="status">{aviso}</p>
       <Indicadores itens={[
-        ['Produtos', produtos.dados?.length ?? '—'], ['Por tratar', lista.filter((e) => e.estado !== 'entregue').length],
-        ['Vendas entregues', euro(lista.filter((e) => e.estado === 'entregue').reduce((s, e) => s + totalEncomenda(e), 0))], ['Stock baixo', stockBaixo.length]
+        ['Produtos', produtos?.length ?? (estadoProdutor === 'aprovado' ? '—' : 0)], ['Por tratar', lista.filter((e) => e.estado !== 'entregue').length],
+        ['Vendas entregues', euro(lista.filter((e) => e.estado === 'entregue').reduce((s, e) => s + totalEncomenda(e), 0))], ['Stock baixo', stockBaixo.length],
+        ['Avaliações', avaliacoes]
       ]} />
       <div className="painel-colunas"><section className="card p-3" aria-labelledby="encomendas-recebidas">
         <h2 id="encomendas-recebidas" className="h4">Encomendas recebidas</h2>
@@ -114,7 +129,9 @@ export default function PainelProdutor() {
       </section><section aria-labelledby="resumo-exploracao"><h2 id="resumo-exploracao" className="h4">A exploração</h2>
         <h3 className="h6">Alertas de stock</h3>{stockBaixo.map((p) => <p className="alert alert-warning" key={p._id}>{p.nome}: {p.stock} {p.unidade}</p>)}
         {!stockBaixo.length && <p>Sem alertas de stock baixo.</p>}
-        {(leiloes.dados || []).filter((l) => l.produtor._id === utilizador._id).map((l) => <div className="mb-3" key={l._id}><CartaoLeilao leilao={l} /></div>)}
+        <section aria-labelledby="leiloes-produtor"><h3 id="leiloes-produtor" className="h5">Leilões</h3>
+          <ListaLeiloesPainel {...leiloes} />
+        </section>
       </section></div>
     </>
   );
