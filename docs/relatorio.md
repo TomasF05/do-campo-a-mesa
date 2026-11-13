@@ -484,4 +484,4 @@ O projeto utiliza JavaScript e JSX, HTML e CSS/Sass. O frontend foi desenvolvido
 
 Foram utilizados Git e GitHub para controlo de versões, Visual Studio Code para edição, ferramentas de desenvolvimento do navegador para inspeção da interface e dos pedidos e Swagger UI para consultar e verificar o contrato REST. O Render, o MongoDB Atlas e o Cloudinary foram utilizados para alojamento, dados e fotografias, respetivamente.
 
-Foram utilizados assistentes de IA, incluindo **Codex** e **ChatGPT**, como apoio ao desenvolvimento, à revisão de código, à preparação e execução de verificações técnicas e à redação e revisão da documentação. O autor acompanhou e aprovou as alterações e confirmou manualmente, na aplicação publicada, os fluxos de leilão com e sem licitações, o fecho automático e o upload de fotografias. Os resultados de produção ainda por documentar estão identificados na secção 8.3.
+Foram utilizados assistentes de IA, incluindo **Codex** e **ChatGPT**, como apoio ao desenvolvimento, à revisão de código, à preparação e execução de verificações técnicas e à redação e revisão da documentação. 
