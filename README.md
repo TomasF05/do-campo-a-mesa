@@ -1,157 +1,108 @@
-# Do Campo à Mesa · código base
+# Do Campo à Mesa
 
-Mercado digital de produtores locais com leilões em tempo real.
-Trabalho prático individual de **Desenvolvimento Web e para a Cloud** (MEI · IPVC–ESTG), 7 semanas.
+Mercado digital que aproxima os produtores locais do Alto Minho dos consumidores e da restauração. Reúne um catálogo pesquisável, encomendas e leilões em direto para lotes sazonais ou excedentes. Projeto individual da unidade curricular de **Desenvolvimento Web e para a Cloud**, do Mestrado em Engenharia Informática (IPVC–ESTG).
 
-Este repositório é um **ponto de partida**. A infraestrutura já está montada, com servidor, ligação à base de dados, routing, estilos, autenticação por token e sockets. As funcionalidades estão marcadas com `TODO (Passo N)`, e os endpoints por fazer respondem `501 Not Implemented`.
+| Serviço | Endereço público |
+| --- | --- |
+| Aplicação | [Do Campo à Mesa](https://do-campo-a-mesa-web-d1xc.onrender.com) |
+| API REST | [Origem da API](https://do-campo-a-mesa-342d.onrender.com), com os recursos sob `/api`. [Verificação de saúde](https://do-campo-a-mesa-342d.onrender.com/api/health) |
+| Documentação da API | [Swagger UI](https://do-campo-a-mesa-342d.onrender.com/api-docs/) |
 
-## Estrutura
+## Funcionalidades
 
-```
-do-campo-a-mesa/
-├── api/                      Node.js · Express · MongoDB · Socket.io
-│   ├── openapi.yaml          Passo 5: especificação OpenAPI (Swagger UI em /api-docs)
-│   └── src/
-│       ├── server.js         HTTP + Socket.io
-│       ├── app.js            Express: middleware, rotas, Swagger
-│       ├── config/db.js      ligação ao MongoDB
-│       ├── middleware/       auth.js (JWT + papéis), errorHandler.js
-│       ├── models/           User, Product, Order, Auction, Bid, Review (Passo 4)
-│       ├── routes/           auth, products, producers, orders, auctions, reviews, admin (Passo 3)
-│       ├── sockets/          index.js (autenticação), leiloes.js (Passo 7)
-│       ├── services/         imagens.js: storage na Cloud (Passo 8)
-│       └── seed/seed.js      dados de exemplo
-├── web/                      React (Vite) · Bootstrap 5 · SASS
-│   └── src/
-│       ├── App.jsx           rotas (visitante, comprador, produtor, admin)
-│       ├── api/client.js     pedidos à API com o token JWT
-│       ├── context/          AuthContext, CarrinhoContext (estado global)
-│       ├── hooks/            useLeilao (Socket.io), useNotificacoes
-│       ├── components/       Navbar, CartaoProduto, EstadoEncomenda, RotaProtegida…
-│       ├── pages/            Catalogo, Produtor, Leiloes, SalaLeilao, Carrinho, Encomendas, …
-│       ├── styles/           _variables, _mixins (Mobile First), _catalogo, main.scss
-│       └── data/             produtos.json: dados simulados (semana 2)
-└── docs/
-    └── relatorio.md          estrutura sugerida para o relatório
-```
+- **Visitante:** consulta o catálogo, pesquisa por nome, descrição ou produtor, filtra e ordena produtos, e consulta perfis públicos e a listagem de leilões.
+- **Comprador:** gere o carrinho, encomenda para entrega ou levantamento, acompanha o estado das encomendas, avalia produtos e produtores após a entrega e licita em direto.
+- **Produtor:** edita o perfil público e acompanha o estado de validação. Após aprovação, pode publicar produtos com fotografias, gerir stock e criar leilões. No painel, consulta as encomendas recebidas e atualiza o seu estado.
+- **Administrador:** consulta indicadores, aprova ou rejeita produtores e modera avaliações denunciadas.
 
-## Pré-requisitos
+## Arquitetura e tecnologias
 
-- Node.js 20 ou superior
-- MongoDB local, ou um cluster gratuito no [MongoDB Atlas](https://www.mongodb.com/atlas)
+| Componente | Tecnologias e responsabilidade |
+| --- | --- |
+| `web/` | SPA em JavaScript com React, Vite, React Router, Bootstrap 5 e Sass. Os contextos React mantêm a sessão, o carrinho e a ligação Socket.io. |
+| `api/` | Node.js e Express para a API REST e Socket.io para tempo real no mesmo servidor HTTP. JWT e bcryptjs para autenticação e palavras-passe, Multer para os uploads e OpenAPI 3.0.3 com Swagger UI. |
+| Dados | MongoDB, através do Mongoose. O MongoDB Atlas mantém os dados da aplicação e suporta as transações de checkout e leilões. |
+| Fotografias | Cloudinary e o respetivo SDK na API em produção. Em desenvolvimento, o modo local guarda ficheiros em `api/uploads/`. |
+| Publicação | Código versionado em Git/GitHub. O Render Static Site distribui o frontend compilado e o Render Web Service executa a API e o Socket.io. |
 
-## Arranque
+O navegador consulta a API por HTTPS e recebe atualizações pelo Socket.io, com WebSocket seguro (WSS) ou polling HTTPS. A API é responsável pelas regras de negócio, verifica o JWT e o papel do utilizador e comunica com o MongoDB e o Cloudinary. Os segredos ficam no backend. A interface segue uma abordagem Mobile First. Os estilos Sass incluem o mixin `a-partir-de()` com pontos de quebra de 768, 1024 e 1280 px. O [relatório técnico](docs/relatorio.md) descreve as decisões de implementação.
+
+## Instalação e execução local
+
+Recomenda-se **Node.js 22**. São também necessários npm, Git e acesso a MongoDB. Usa um **replica set** MongoDB local ou um cluster Atlas para os fluxos transacionais. Um MongoDB local em modo *standalone* não suporta as transações usadas no checkout e nos leilões. [Requisitos de transações no MongoDB](https://www.mongodb.com/docs/manual/core/transactions-production-consideration/)
+
+A partir da raiz do repositório, abre dois terminais e executa:
 
 ```bash
-# API
+# Terminal 1 — API
 cd api
-cp .env.example .env          # preencher MONGODB_URI e JWT_SECRET
-npm install
-npm run seed                  # opcional: dados de exemplo (password: password123)
-npm run dev                   # http://localhost:3000  ·  docs em /api-docs
+cp .env.example .env
+# Configurar as variáveis de api/.env antes do arranque.
+npm ci
+npm run dev
+```
 
-# SPA (noutro terminal)
+```bash
+# Terminal 2 — frontend
 cd web
 cp .env.example .env
-npm install
-npm run dev                   # http://localhost:5173
+npm ci
+npm run dev
 ```
 
-Com `VITE_USAR_DADOS_SIMULADOS=true`, o catálogo funciona sem API, a partir de `src/data/produtos.json`. Quando a API estiver pronta, mude para `false`.
+No PowerShell, usa `Copy-Item .env.example .env` em vez de `cp` se preferires. Se o ficheiro `.env` já existir, edita-o diretamente. Abre [o frontend local](http://localhost:5173), [a verificação de saúde da API](http://localhost:3000/api/health) ou [a Swagger UI local](http://localhost:3000/api-docs/). Para arrancar a API sem o modo de desenvolvimento do Nodemon, usa `npm start` em `api/`.
 
-### Utilizadores de exemplo (`npm run seed`)
+### Variáveis de ambiente
 
-Todos os utilizadores têm a password `password123`.
+| Ficheiro / serviço | Variável | Configuração |
+| --- | --- | --- |
+| API | `PORT` | `3000` em desenvolvimento. No Render, usa a porta fornecida pelo serviço. |
+| API | `MONGODB_URI` | URI da base de dados autorizada para o ambiente. Usa uma base isolada para testes com escrita. |
+| API | `JWT_SECRET` | Segredo longo e aleatório, distinto por ambiente. |
+| API | `JWT_EXPIRES_IN` | Duração do token. O valor por omissão é `2h`. |
+| API | `CLIENT_URL` | Origem exata do frontend, sem barra final. Localmente, `http://localhost:5173`. No Render, o URL HTTPS do Static Site. |
+| API | `IMAGENS_ARMAZENAMENTO` | `local` para gravar em disco em desenvolvimento. Em produção, define `cloudinary`. |
+| API | `CLOUDINARY_URL` | Credencial necessária apenas no modo `cloudinary`. Configura-a como segredo no Web Service ou no `api/.env` de teste. |
+| API | `CICLO_LEILOES_ATIVO` | `true` ativa a abertura e o fecho automáticos. Define `false` quando a API local usar a mesma base que o Render. |
+| Frontend | `VITE_API_URL` | Origem da API, sem `/api` nem barra final. Localmente, `http://localhost:3000`. No Static Site, `https://do-campo-a-mesa-342d.onrender.com`, definida antes da compilação. |
 
-| Papel | Email |
-|---|---|
-| admin | admin@exemplo.pt |
-| produtor | horta@exemplo.pt |
-| produtor | mel@exemplo.pt |
-| comprador | tasca@exemplo.pt |
+Mantém os ficheiros `.env` fora do Git e usa os ficheiros `.env.example` como referência. Em produção, configura `NODE_ENV=production` na API. As variáveis `VITE_*` são incorporadas no frontend durante a compilação e só devem conter valores públicos.
 
-O seed cria também 5 produtos e um leilão ativo com 30 minutos de duração.
+## Publicação e fotografias
 
-Atenção: o seed **apaga** as coleções de utilizadores, produtos e leilões antes de inserir os dados.
+Para reproduzir a publicação no Render, configura o Web Service com `api/` como diretório de trabalho, `npm ci` para instalar, `npm start` para arrancar e `/api/health` como verificação de saúde. A configuração da SPA usa `web/` como diretório de trabalho, `npm ci && npm run build` como comando de compilação e `dist` como pasta publicada. Uma regra de *rewrite* de `/*` para `/index.html` permite abrir ou recarregar uma rota interna da SPA. [Render Static Sites](https://render.com/docs/static-sites)
 
-### Verificar que está tudo a funcionar
+O produtor envia a fotografia para `POST /api/products/:id/imagem` no campo multipart `imagem`. A API aceita JPEG, PNG ou WebP abaixo de 5 MiB. Em produção, envia o ficheiro ao Cloudinary e guarda o URL HTTPS em `imagemUrl` no MongoDB. Assim, a imagem permanece acessível após um reinício ou uma nova publicação da API. Se um novo envio falhar, a referência anterior é preservada. Fotografias antigas referenciadas por URLs locais precisam de ser carregadas novamente para obter um URL público.
 
-| Pedido | Resposta esperada |
-|---|---|
-| `GET http://localhost:3000/api/health` | `200 { "estado": "ok" }` |
-| `GET http://localhost:3000/api/products` | `200` com a lista de produtos |
-| `http://localhost:3000/api-docs` | Swagger UI |
-| `GET /api/admin/estatisticas` sem token | `401` (o middleware de autenticação está ativo) |
-| Endpoints ainda por implementar | `501 { "erro": "Por implementar", "descricao": "…" }` |
+## Leilões e notificações
 
-## Notas da implementação
+O produtor aprovado cria um leilão imediato ou agendado. O servidor aceita licitações de compradores autenticados, verifica o prazo e o incremento mínimo e grava o lance e a atualização do leilão na mesma transação. O ciclo abre os leilões agendados e encerra os ativos após o prazo. Quando existe vencedor, cria uma única encomenda confirmada, com uma unidade do lote e o valor final. Um leilão sem licitações termina sem encomenda.
 
-### API (`api/`): Node.js · Express · MongoDB · Socket.io
+O Socket.io atualiza a presença, o valor atual e o histórico da sala. Também entrega avisos de encomendas, aprovação de produtor e resultado de leilão aos destinatários respetivos. Após uma reconexão, a aplicação recupera o estado atual pela API REST. Os avisos emitidos durante uma desconexão podem não voltar a aparecer.
 
-**Já funciona:**
+O **Render Free** suspende o Web Service após 15 minutos sem tráfego de entrada. O primeiro pedido após esse período pode demorar cerca de um minuto. Enquanto o processo estiver suspenso, o ciclo automático não corre. Quando a API retoma, os ciclos seguintes voltam a verificar os prazos vencidos. A hora registada do fecho pode, por isso, ficar depois da hora prevista, embora o servidor continue a rejeitar lances que cheguem após o prazo. O plano inclui 750 horas de instâncias Free por mês, partilhadas pelo *workspace*, e o disco do Web Service é efémero. [Limites do Render Free](https://render.com/docs/free)
 
-- arranque do servidor HTTP partilhado pela API REST e pelo Socket.io;
-- ligação ao MongoDB, configuração por `.env` (ver `.env.example`) e tratamento centralizado de erros (`400` para validação, `500` para o resto);
-- middleware `auth(...papeis)`: valida o token JWT e o papel do utilizador (`401` sem token, `403` sem permissão);
-- Swagger UI em `/api-docs`, com o recurso `/products` documentado como exemplo;
-- sockets: autenticação com o mesmo JWT da API, sala pessoal por utilizador, salas por leilão e contagem de participantes;
-- serviço de upload de imagens para Azure Blob Storage (`services/imagens.js`);
-- script `npm run seed` com dados de exemplo.
+## Testes
 
-**Base para rever:**
-
-- modelos User, Product, Order, Auction, Bid e Review, a rever no Passo 4 (embedding vs linking, índices).
-
-**Por fazer:**
-
-- as rotas estão todas definidas, mas só a pesquisa de produtos (`GET /api/products`) está implementada; as restantes respondem `501` com um comentário a explicar o que falta;
-- o registo e o login (Passo 6);
-- a licitação atómica nos leilões (Passo 7), com a solução indicada em comentário em `sockets/leiloes.js`.
-
-### SPA (`web/`): React (Vite) · Bootstrap 5 · SASS
-
-**Já funciona:**
-
-- rotas para os 4 intervenientes (visitante, comprador, produtor, administrador), com páginas protegidas por papel (`RotaProtegida`);
-- menu que se adapta ao utilizador autenticado;
-- estado global da sessão (`AuthContext`) e do carrinho (`CarrinhoContext`);
-- catálogo com dados simulados (pesquisa, categorias e filtro biológico); com `VITE_USAR_DADOS_SIMULADOS=false` passa a usar a API;
-- ligação em tempo real à sala de leilão (hook `useLeilao`);
-- SASS com as variáveis do tema, o mixin Mobile First `a-partir-de()` e a grelha do catálogo com 3 breakpoints (768, 1024 e 1280 px).
-
-**Por fazer:**
-
-- as páginas ainda por fazer mostram uma caixa tracejada **"Por implementar (Passo N)"** que diz o que falta.
-
-### Onde procurar o trabalho a fazer
-
-Há 25 marcadores `TODO (Passo N)` no código, ligados aos passos da apresentação. Para os listar todos:
+A suite de integração requer o executável **`mongod`** instalado. Coloca-o no `PATH` ou define `MONGOD_BINARY` com o caminho completo para o executável. Em Windows, a suite também procura nas pastas habituais de instalação do MongoDB.
 
 ```bash
-grep -rn "TODO" api/src api/openapi.yaml web/src
+cd api
+npm ci
+npm test
 ```
 
-### Sugestão para distribuir o código
+Se precisares de indicar outro caminho, define a variável antes de executar `npm test` (exemplo em PowerShell):
 
-Colocar este código num repositório GitHub marcado como **template**. Cada aluno cria a sua cópia com *Use this template*, partilha-a com o docente e trabalha nela durante as 7 semanas.
+```powershell
+$env:MONGOD_BINARY = 'C:\Program Files\MongoDB\Server\8.2\bin\mongod.exe'
+npm test
+```
 
-## O que já está feito e o que falta
+A suite arranca uma API e um *replica set* descartáveis em loopback, cria os próprios dados de teste e limpa os recursos no fim. Não precisa de uma API já em execução, do `.env` habitual, do seed nem de acesso ao Atlas. O comando indica `PASS` ou `FAIL` para cada verificação e termina com código `1` se houver falhas. O [relatório](docs/relatorio.md#83-testes-e-validação) inclui a evidência das licitações concorrentes.
 
-| Passo | Semana | Já feito | Por fazer (`TODO`) |
-|---|---|---|---|
-| 1 · Frontend | 1 | Bootstrap + SASS com variáveis, mixin `a-partir-de()` e grelha do catálogo | 3 breakpoints em todas as páginas, estilos dos ecrãs restantes |
-| 2 · SPA | 2 | Routing, rotas protegidas por papel, contexto do carrinho e da sessão, catálogo | Páginas do produtor, leilões, painéis |
-| 3 · API REST | 3 | Todas as rotas definidas; `GET /api/products` implementado | Restantes endpoints (respondem 501) |
-| 4 · MongoDB | 3 | Schemas base | Rever embedding vs linking, índices, avaliações |
-| 5 · Swagger | 4 | Swagger UI e documentação de `/products` | Documentar os restantes recursos |
-| 6 · Segurança | 4 | Middleware `auth(...papeis)` | Registo e login (bcrypt + JWT), formulários |
-| 7 · Tempo real | 5 | Autenticação dos sockets, salas, presença, hook `useLeilao` | Licitação atómica, contagem decrescente, notificações |
-| 8 · Cloud | 6 | Serviço de upload para Azure Blob Storage | Deployment (PaaS), variáveis de ambiente, HTTPS |
-
-Na semana 7 ficam os testes, o relatório (`docs/relatorio.md`) e o vídeo.
-
-## Regras do repositório
-
-- Faça *commits* pequenos e frequentes, com mensagens claras. O histórico é considerado na avaliação.
-- O ficheiro `.env` nunca vai para o Git; use `.env.example` como modelo.
-- Declare no relatório as bibliotecas e os assistentes de IA que usar.
+- Em `web/`, executa `npm run build` para verificar a compilação.
+- Em `api/`, executa `npm audit --omit=dev` para verificar os avisos nas dependências de produção.
+- Com a API em execução, verifica `GET /api/health` (esperado: HTTP 200 e `{"estado":"ok"}`), `GET /api/products` (lista de produtos) e `/api-docs/` (Swagger UI). `GET /api/admin/estatisticas` sem token deve devolver HTTP 401.
+- Para validar um leilão, usa um produtor aprovado e dois compradores em sessões independentes. Verifica a abertura, os lances em direto, o fecho e as relações entre leilão, licitações e encomenda. Para testes com escrita, usa uma base isolada ou dados expressamente reservados para o ensaio.
+- O script `npm run seed` é opcional e destrutivo. Usa-o apenas numa base local descartável para repor os dados de exemplo. A instalação e a publicação não dependem dele.

@@ -33,11 +33,11 @@ function emitirPresenca(io, leilaoId) {
   io.to(sala(leilaoId)).emit('presenca', n);
 }
 
-module.exports = (io, socket) => {
+module.exports = (io, socket, acompanhar = (handler) => handler) => {
   // Identifica cada pedido para não entrar numa sala depois de sair ou mudar de pedido.
   const entradas = new Map();
 
-  socket.on('entrar', async (leilaoId) => {
+  socket.on('entrar', acompanhar(async (leilaoId) => {
     if (!idValido(leilaoId)) return socket.emit('recusada', 'Identificador de leilão inválido');
     leilaoId = leilaoId.toLowerCase();
     const pedido = Symbol();
@@ -79,9 +79,9 @@ module.exports = (io, socket) => {
       console.error('Erro ao carregar o estado do leilão:', err);
       socket.emit('recusada', 'Não foi possível carregar o leilão');
     }
-  });
+  }));
 
-  socket.on('sair', async (leilaoId) => {
+  socket.on('sair', acompanhar(async (leilaoId) => {
     if (!idValido(leilaoId)) return socket.emit('recusada', 'Identificador de leilão inválido');
     leilaoId = leilaoId.toLowerCase();
     entradas.delete(leilaoId);
@@ -89,9 +89,9 @@ module.exports = (io, socket) => {
       await socket.leave(sala(leilaoId));
       emitirPresenca(io, leilaoId);
     }
-  });
+  }));
 
-  socket.on('licitar', async (...args) => {
+  socket.on('licitar', acompanhar(async (...args) => {
     const ack = typeof args.at(-1) === 'function' ? args.pop() : null;
     const responder = (resposta) => {
       if (!socket.connected) return;
@@ -166,7 +166,7 @@ module.exports = (io, socket) => {
       if (!err.recusa) console.error('Erro ao processar a licitação:', err);
       responder({ ok: false, erro: err.recusa ? err.message : 'Não foi possível confirmar a licitação. Consulte o estado atual antes de tentar novamente.' });
     }
-  });
+  }));
 
   // Atualizar a presença quando o utilizador fecha a página
   socket.on('disconnecting', () => {

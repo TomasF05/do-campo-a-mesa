@@ -1,16 +1,15 @@
 // Passo 3: recurso /api/products
 const router = require('express').Router();
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs/promises');
-const { randomUUID } = require('crypto');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 const produtorValidado = require('../middleware/produtorValidado');
+const { guardarImagem, removerOrfa } = require('../services/imagens');
 const { a, erro, id, parametroId, campos, query, numero, escaparRegex } = require('../utils/http');
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+// Multer 2 aceita o tamanho exato do limite. Preservar o contrato de menos de 5 MiB.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 - 1 } });
 const CAMPOS = ['nome', 'descricao', 'categoria', 'preco', 'unidade', 'stock', 'biologico', 'epocas'];
 const POPULATE = 'nome produtor.localidade produtor.nomeExploracao';
 const ORDENACAO = {
@@ -109,16 +108,25 @@ router.post('/:id/imagem', auth('produtor'), a(async (req, res, next) => {
   else if (buffer[0] === 255 && buffer[1] === 216 && buffer[2] === 255) extensao = 'jpg';
   else if (buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') extensao = 'webp';
   if (!extensao) throw erro(400, 'Use uma imagem JPEG, PNG ou WebP');
-  const pasta = path.join(__dirname, '..', '..', 'uploads');
-  await fs.mkdir(pasta, { recursive: true });
-  const nome = `${randomUUID()}.${extensao}`;
-  const destino = path.join(pasta, nome);
-  await fs.writeFile(destino, buffer);
+  const origem = req.protocol + '://' + req.get('host');
+  const { imagemUrl, remover } = await guardarImagem(buffer, extensao, origem);
   try {
-    req.produto.imagemUrl = `${req.protocol}://${req.get('host')}/uploads/${nome}`;
+    req.produto.imagemUrl = imagemUrl;
     await req.produto.save();
-  } catch (err) { await fs.unlink(destino); throw err; }
-  res.json({ imagemUrl: req.produto.imagemUrl });
+  } catch (err) {
+    // Uma falha de rede ou de confirmação pode ter ocorrido depois da gravação.
+    // Nesses casos é mais seguro manter a nova imagem para uma reconciliação posterior.
+    const resultadoIncerto = /Network|Timeout|WriteConcern/.test(err.name || '') || err.code === 64 ||
+      err.hasErrorLabel?.('RetryableWriteError');
+    if (!resultadoIncerto) {
+      await removerOrfa(async () => {
+        const emUso = await Product.exists({ imagemUrl }).read('primary').maxTimeMS(3000);
+        if (!emUso) await remover();
+      });
+    }
+    throw err;
+  }
+  res.json({ imagemUrl });
 }));
 
 module.exports = router;
