@@ -20,9 +20,9 @@ export default function PainelAdmin() {
   const [aviso, setAviso] = useState('');
   const [aGuardar, setAGuardar] = useState(false);
   async function decidir(caminho, corpo, mensagem) {
-    setAGuardar(true); setErro('');
+    setAGuardar(true); setErro(''); setAviso('');
     try { await api(caminho, { metodo: 'PATCH', corpo, token }); setAviso(mensagem); atualizarPainel(); }
-    catch (err) { setErro(err.message); } finally { setAGuardar(false); }
+    catch (err) { setErro(err.message); if (err.status === 409) atualizarPainel(); } finally { setAGuardar(false); }
   }
   return (
     <>

@@ -12,6 +12,11 @@ import CartaoLeilao from '../../components/CartaoLeilao.jsx';
 
 const ESTADOS = ['pendente', 'confirmada', 'pronta', 'entregue'];
 const DATA_ENCOMENDA = new Intl.DateTimeFormat('pt-PT', { dateStyle: 'medium', timeStyle: 'short' });
+const ESTADO_CONTA = {
+  pendente: 'A sua conta de produtor aguarda validação pelo administrador.',
+  aprovado: 'A sua conta de produtor está aprovada.',
+  rejeitado: 'A sua conta de produtor foi rejeitada pelo administrador.'
+};
 
 function EncomendaRecebida({ encomenda, avancar }) {
   const { comprador, estado, entrega, origem, createdAt, linhas, total } = encomenda;
@@ -71,7 +76,7 @@ function EncomendaRecebida({ encomenda, avancar }) {
 }
 
 export default function PainelProdutor() {
-  const { utilizador, token } = useAuth();
+  const { utilizador, token, estadoProdutor } = useAuth();
   const produtos = useApi(`/products?produtor=${utilizador._id}`);
   const encomendas = useApi('/orders');
   const leiloes = useApi('/auctions');
@@ -89,8 +94,11 @@ export default function PainelProdutor() {
     <>
       <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
         <h1 className="mb-0">Painel do produtor</h1>
-        <div className="d-flex flex-wrap gap-2"><Link to="/produtor/produtos" className="btn btn-outline-primary">Os meus produtos</Link><Link to="/produtor/leiloes/novo" className="btn btn-success">Criar leilão</Link></div>
+        <div className="d-flex flex-wrap gap-2">
+          {estadoProdutor === 'aprovado' && <><Link to="/produtor/produtos" className="btn btn-outline-primary">Os meus produtos</Link><Link to="/produtor/leiloes/novo" className="btn btn-success">Criar leilão</Link></>}
+        </div>
       </div>
+      <p className={estadoProdutor === 'aprovado' ? 'texto-secundario' : 'alert alert-warning'} role="status">{ESTADO_CONTA[estadoProdutor]}</p>
       <EstadoPedido aCarregar={produtos.aCarregar || encomendas.aCarregar} erro={erro || produtos.erro || encomendas.erro} />
       <p role="status">{aviso}</p>
       <Indicadores itens={[

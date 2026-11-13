@@ -48,8 +48,10 @@ export default function App() {
           {/* Produtor */}
           <Route element={<RotaProtegida papeis={['produtor']} />}>
             <Route path="/produtor" element={<PainelProdutor />} />
-            <Route path="/produtor/produtos" element={<ProdutosProdutor />} />
-            <Route path="/produtor/leiloes/novo" element={<NovoLeilao />} />
+            <Route element={<RotaProtegida produtorAprovado />}>
+              <Route path="/produtor/produtos" element={<ProdutosProdutor />} />
+              <Route path="/produtor/leiloes/novo" element={<NovoLeilao />} />
+            </Route>
           </Route>
 
           {/* Administrador */}

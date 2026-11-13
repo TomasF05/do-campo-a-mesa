@@ -33,6 +33,7 @@ router.post('/registo', a(async (req, res) => {
       produtor[campo] = produtor[campo].trim();
     }
     produtor.validado = false;
+    produtor.estadoValidacao = 'pendente';
   }
   const u = new User({ nome: dados.nome.trim(), email, papel, produtor, passwordHash: 'por-calcular' });
   await u.validate();
@@ -59,6 +60,7 @@ router.post('/login', a(async (req, res) => {
 router.get('/eu', auth(), a(async (req, res) => {
   const u = await User.findById(req.user.id);
   if (!u) throw erro(401, 'Utilizador não encontrado');
+  res.set('Cache-Control', 'private, no-store');
   res.json(u.publico());
 }));
 
