@@ -4,7 +4,24 @@ info:
   title: Do Campo à Mesa API
   version: 0.1.0
   description: |
-    Mercado digital de produtores locais. 
+    Mercado digital de produtores locais.
+
+    ## Eventos Socket.io
+    A ligação usa o mesmo servidor HTTP e recebe o JWT em `auth.token` no handshake.
+    A expiração encerra a ligação. Os eventos seguintes usam Socket.io.
+
+    | Direção | Evento | Dados e comportamento |
+    | --- | --- | --- |
+    | Cliente → servidor | `entrar`, `sair` | Identificador do leilão. Adere à sala ou sai dela. |
+    | Cliente → servidor | `licitar` | `{ leilaoId, valor }`. Exclusivo de compradores. Requer leilão ativo dentro do prazo e valor igual ou superior ao valor atual mais o incremento. O valor é positivo e representável em cêntimos. |
+    | Servidor → cliente | Confirmação de `licitar` | Ack `{ ok: true, valor, licitacao }` após a transação ou `{ ok: false, erro }` em caso de recusa. Sem callback de ack, a recusa chega por `recusada`. |
+    | Servidor → cliente | `recusada` | Mensagem de erro da sala, recusa de licitação sem ack ou sessão expirada. |
+    | Servidor → cliente | `estado` | `{ agora, leilao, licitacoes }`, com a hora do servidor e até 20 licitações recentes. |
+    | Servidor → sala | `presenca`, `nova-licitacao` | Número de ligações na sala ou licitação confirmada com `_id`, `leilaoId`, `valor`, `comprador`, `nome`, `createdAt` e `numLicitacoes`. |
+    | Servidor → sala | `aberto`, `terminado` | A abertura envia `{ id }`. O fecho envia `{ id, lote, vencedor, valor, numLicitacoes }`. `vencedor` contém `id` e `nome` ou é `null`. |
+    | Servidor → destinatário | `leilao-ganho`, `leilao-terminado` | Resultado do fecho com o campo `encomenda` para o vencedor e para o produtor, respetivamente. |
+    | Servidor → destinatário | `nova-encomenda`, `encomenda-atualizada` | Aviso ao produtor com `{ id, total }` ou ao comprador com `{ id, estado, produtor }`, respetivamente. |
+    | Servidor → destinatário | `conta-validada`, `painel-atualizado` | Aviso de aprovação ao produtor ou sinal de atualização com o recurso afetado. A rejeição é comunicada ao próprio produtor. |
 servers:
   - url: /api
     description: API no mesmo servidor que disponibiliza o Swagger UI
@@ -13,7 +30,7 @@ tags:
   - { name: Serviço, description: Estado da API }
   - { name: Autenticação, description: Registo e autenticação com JWT }
   - { name: Produtos, description: Catálogo e gestão dos produtos }
-  - { name: Produtores, description: Páginas públicas dos produtores validados }
+  - { name: Produtores, description: Consulta e edição de perfis de produtores }
   - { name: Encomendas, description: Compras e acompanhamento dos estados }
   - { name: Leilões, description: Consulta e criação de leilões pela API REST }
   - { name: Avaliações, description: Avaliações após entrega e denúncias }
@@ -47,8 +64,8 @@ paths:
         Cria uma conta com password guardada como hash bcrypt de custo 12.
         Normaliza o email para minúsculas e retira os espaços nas extremidades.
         O papel é comprador quando omitido; não permite criar administradores.
-        Um produtor precisa de nomeExploracao e localidade e fica sempre com validado=false,
-        mesmo que envie outro valor. Os campos não permitidos são ignorados.
+        Um produtor precisa de nomeExploracao e localidade. O servidor define estadoValidacao=pendente
+        e validado=false. Os campos não permitidos são ignorados.
         Devolve apenas o identificador da conta; é necessário fazer login para obter o JWT.
       requestBody:
         required: true
@@ -98,7 +115,8 @@ paths:
         Devolve um JWT assinado com HS256 e os dados públicos do utilizador, sem passwordHash.
         O JWT contém id, papel e nome, além de iat e exp. Expira em duas horas por omissão,
         com duração configurável em JWT_EXPIRES_IN.
-        Produtores por validar podem iniciar sessão; a criação de produtos e leilões exige aprovação.
+        Produtores pendentes, aprovados ou rejeitados podem iniciar sessão com credenciais válidas.
+        A criação de produtos e leilões exige aprovação.
       requestBody:
         required: true
         content:
@@ -138,10 +156,21 @@ paths:
       responses:
         '200':
           description: Dados atuais do utilizador autenticado
+          headers:
+            Cache-Control: { $ref: '#/components/headers/CacheControlPrivado' }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/UserPublico' }
-        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '401':
+          description: JWT inválido, expirado ou em falta, ou conta inexistente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              examples:
+                token:
+                  value: { erro: "Token inválido ou em falta" }
+                conta:
+                  value: { erro: "Utilizador não encontrado" }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /products:
@@ -149,21 +178,25 @@ paths:
       tags: [Produtos]
       operationId: pesquisarProdutos
       summary: Pesquisar produtos de produtores validados
-      description: Combina os filtros indicados. A pesquisa por texto é literal e ignora maiúsculas/minúsculas.
+      description: Combina os filtros indicados. A pesquisa por texto é literal e ignora maiúsculas/minúsculas. A localidade é comparada pelo valor exato.
       parameters:
-        - { name: q, in: query, description: Texto no nome do produto ou do produtor, schema: { type: string }, example: mel }
+        - { name: q, in: query, description: Texto no nome ou na descrição do produto ou no nome do produtor, schema: { type: string }, example: mel }
         - name: categoria
           in: query
-          description: Categoria; Todos desativa este filtro.
-          schema: { type: string, enum: [Todos, Hortícolas, Fruta, Mel, Vinho, Queijo, Padaria, Outros] }
-        - { name: precoMax, in: query, schema: { type: number, minimum: 0 }, example: 10 }
+          description: Nome exato da categoria. Todos ou um valor vazio desativa o filtro.
+          schema: { type: string, example: Fruta }
+        - name: precoMax
+          in: query
+          description: Limite inclusivo, não negativo e representável em cêntimos. Use ponto decimal, com até duas casas. O valor vazio desativa o filtro.
+          schema: { type: string, pattern: '^(?:\s*(?:\d+(?:\.\d{0,2})?|\.\d{1,2})\s*)?$' }
+          example: '10.50'
         - { name: bio, in: query, description: true limita a produtos biológicos; false não aplica este filtro, schema: { type: boolean } }
         - { $ref: '#/components/parameters/Produtor' }
         - { $ref: '#/components/parameters/Localidade' }
-        - { name: epoca, in: query, schema: { $ref: '#/components/schemas/Epoca' } }
+        - { name: epoca, in: query, description: Nome exato da época, schema: { type: string, example: Outono } }
         - name: ordenar
           in: query
-          description: Aceita também preco_asc e preco_desc como alternativas.
+          description: Ordena por nome, data de criação decrescente ou preço crescente/decrescente. Em caso de empate usa o identificador. Aceita também preco_asc e preco_desc.
           schema: { type: string, enum: [nome, recentes, preco-asc, preco-desc, preco_asc, preco_desc], default: recentes }
       responses:
         '200':
@@ -172,14 +205,27 @@ paths:
             application/json:
               schema:
                 type: array
-                items: { $ref: '#/components/schemas/Product' }
-        '400': { $ref: '#/components/responses/DadosInvalidos' }
+                items: { $ref: '#/components/schemas/ProductLista' }
+        '400':
+          description: Query inválida, produtor malformado, preço, modo biológico ou ordenação inválidos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              examples:
+                query:
+                  value: { erro: "Parâmetros de pesquisa inválidos" }
+                preco:
+                  value: { erro: "Preço máximo inválido. Use até duas casas decimais" }
+                bio:
+                  value: { erro: "Filtro biológico inválido" }
+                ordenar:
+                  value: { erro: "Ordenação inválida" }
         '500': { $ref: '#/components/responses/ErroInterno' }
     post:
       tags: [Produtos]
       operationId: criarProduto
       summary: Criar produto
-      description: Exige papel produtor e registo validado. O produtor é obtido do JWT; a imagem é enviada pela operação de upload.
+      description: Exige papel produtor e conta aprovada. O produtor é obtido do JWT; a imagem é enviada pela operação de upload.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -193,10 +239,31 @@ paths:
             Location: { $ref: '#/components/headers/Location' }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Product' }
-        '400': { $ref: '#/components/responses/DadosInvalidos' }
+              schema: { $ref: '#/components/schemas/ProductGravacao' }
+        '400':
+          description: Dados do produto inválidos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              examples:
+                preco:
+                  value: { erro: "Preço deve ser representável em cêntimos, com no máximo duas casas decimais" }
+                stock:
+                  value: { erro: "Dados inválidos", detalhes: { stock: "O stock tem de ser um número inteiro" } }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
-        '403': { $ref: '#/components/responses/SemPermissao' }
+        '403':
+          description: Papel sem permissão ou conta do produtor por aprovar
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              examples:
+                papel:
+                  value: { erro: "Sem permissão" }
+                pendente:
+                  value: { erro: "O produtor ainda não foi validado" }
+                rejeitado:
+                  value: { erro: "A conta de produtor foi rejeitada" }
+        '413': { $ref: '#/components/responses/CorpoDemasiadoGrande' }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /products/{id}:
@@ -207,9 +274,14 @@ paths:
       operationId: consultarProduto
       summary: Consultar um produto público
       responses:
-        '200': { $ref: '#/components/responses/Produto' }
+        '200': { $ref: '#/components/responses/ProdutoDetalhe' }
         '400': { $ref: '#/components/responses/DadosInvalidos' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '404':
+          description: Produto inexistente ou de produtor não validado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Produto não encontrado" }
         '500': { $ref: '#/components/responses/ErroInterno' }
     put:
       tags: [Produtos]
@@ -226,11 +298,28 @@ paths:
             schema: { $ref: '#/components/schemas/ProductUpdate' }
             example: { preco: 2.8, stock: 250 }
       responses:
-        '200': { $ref: '#/components/responses/Produto' }
-        '400': { $ref: '#/components/responses/DadosInvalidos' }
+        '200': { $ref: '#/components/responses/ProdutoGravado' }
+        '400':
+          description: Identificador ou dados do produto inválidos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              examples:
+                id:
+                  value: { erro: "Identificador ou valor inválido" }
+                campos:
+                  value: { erro: "Indique os dados do produto" }
+                preco:
+                  value: { erro: "Preço deve ser representável em cêntimos, com no máximo duas casas decimais" }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '403': { $ref: '#/components/responses/SemPermissao' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '404':
+          description: Produto inexistente ou de outro produtor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Produto não encontrado" }
+        '413': { $ref: '#/components/responses/CorpoDemasiadoGrande' }
         '500': { $ref: '#/components/responses/ErroInterno' }
     delete:
       tags: [Produtos]
@@ -243,7 +332,12 @@ paths:
         '400': { $ref: '#/components/responses/DadosInvalidos' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '403': { $ref: '#/components/responses/SemPermissao' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '404':
+          description: Produto inexistente ou de outro produtor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Produto não encontrado" }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /products/{id}/imagem:
@@ -254,8 +348,10 @@ paths:
       operationId: enviarImagemProduto
       summary: Enviar uma imagem para um produto próprio
       description: |
-        Exige papel produtor e propriedade do produto. Aceita JPEG, PNG ou WebP até 5 MB.
-        O campo multipart chama-se imagem. Nesta fase o ficheiro é guardado localmente em /uploads.
+        Exige papel produtor e propriedade do produto. Envie um ficheiro no campo imagem.
+        A assinatura do ficheiro tem de corresponder a JPEG, PNG ou WebP. O tamanho tem de ser inferior a 5 MiB.
+        Um upload bem-sucedido associa ao produto o novo URL em /uploads, substituindo a referência anterior.
+        A resposta 413 aplica-se apenas a corpos JSON acima do limite global.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -275,11 +371,32 @@ paths:
                 type: object
                 required: [imagemUrl]
                 properties:
-                  imagemUrl: { type: string, format: uri, example: 'http://localhost:3000/uploads/imagem.png' }
-        '400': { $ref: '#/components/responses/DadosInvalidos' }
+                  imagemUrl: { type: string, format: uri, example: 'http://localhost:3000/uploads/24ac1b9e-bbb3-4c04-a59f-4434a03996e9.png' }
+        '400':
+          description: Identificador inválido, ficheiro em falta, formato rejeitado ou limite de tamanho atingido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              examples:
+                id:
+                  value: { erro: "Identificador ou valor inválido" }
+                campo:
+                  value: { erro: "Envie uma imagem no campo imagem" }
+                formato:
+                  value: { erro: "Use uma imagem JPEG, PNG ou WebP" }
+                tamanho:
+                  value: { erro: "Imagem demasiado grande (máximo 5 MB)" }
+                multipart:
+                  value: { erro: "Upload inválido" }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '403': { $ref: '#/components/responses/SemPermissao' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '404':
+          description: Produto inexistente ou de outro produtor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Produto não encontrado" }
+        '413': { $ref: '#/components/responses/CorpoDemasiadoGrande' }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /producers:
@@ -296,7 +413,7 @@ paths:
             application/json:
               schema:
                 type: array
-                items: { $ref: '#/components/schemas/User' }
+                items: { $ref: '#/components/schemas/ProdutorPublico' }
         '400': { $ref: '#/components/responses/DadosInvalidos' }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
@@ -307,15 +424,68 @@ paths:
       tags: [Produtores]
       operationId: consultarProdutor
       summary: Consultar a página pública de um produtor validado
-      description: Inclui os produtos, as últimas 20 avaliações visíveis e a média de todas as avaliações visíveis.
+      description: |
+        Inclui os produtos, as últimas 20 avaliações visíveis e a média de todas as avaliações visíveis.
+        A média é null quando não existem avaliações visíveis. Com JWT válido de qualquer papel,
+        cada avaliação indica denunciadaPorMim. Um token fornecido e inválido devolve 401.
+      security: [{}, { bearerAuth: [] }]
       responses:
         '200':
           description: Página pública do produtor
+          headers:
+            Vary: { schema: { type: string }, example: Authorization }
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PaginaProdutor' }
         '400': { $ref: '#/components/responses/DadosInvalidos' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '404':
+          description: Produtor inexistente ou não validado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Produtor não encontrado" }
+        '500': { $ref: '#/components/responses/ErroInterno' }
+    patch:
+      tags: [Produtores]
+      operationId: atualizarPerfilProdutor
+      summary: Atualizar os campos públicos do próprio perfil
+      description: |
+        Exige papel produtor e que o id corresponda à conta do JWT. A conta pode estar
+        pendente, aprovada ou rejeitada. Um id de outra conta ou uma conta inexistente devolve 404.
+        Envie pelo menos um campo editável. Campos fora do esquema devolvem 400.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PerfilProdutorUpdate' }
+            example: { nomeExploracao: Horta da Ribeira, localidade: Ponte de Lima }
+      responses:
+        '200':
+          description: Perfil atualizado no formato da conta autenticada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPublico' }
+        '400':
+          description: Identificador inválido, corpo vazio, campo não editável ou valor inválido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              examples:
+                campos:
+                  value: { erro: Indique apenas os campos públicos do perfil }
+                valor:
+                  value: { erro: Valor inválido para nome }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404':
+          description: Produtor inexistente ou de outro utilizador
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: Produtor não encontrado }
+        '413': { $ref: '#/components/responses/CorpoDemasiadoGrande' }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /orders:
@@ -324,7 +494,7 @@ paths:
       operationId: listarEncomendas
       summary: Listar as encomendas do utilizador autenticado
       description: |
-        Um produtor vê as encomendas recebidas; os outros papéis veem as suas compras.
+        Um produtor vê as encomendas recebidas. Compradores e administradores veem apenas as próprias compras.
         Ordenação da mais recente para a mais antiga.
       security: [{ bearerAuth: [] }]
       responses:
@@ -334,7 +504,7 @@ paths:
             application/json:
               schema:
                 type: array
-                items: { $ref: '#/components/schemas/Order' }
+                items: { $ref: '#/components/schemas/OrderLeitura' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '500': { $ref: '#/components/responses/ErroInterno' }
     post:
@@ -343,18 +513,31 @@ paths:
       summary: Encomendar os artigos do carrinho
       description: |
         Exige papel comprador. Agrupa os artigos numa encomenda por produtor.
-        O servidor obtém nomes, preços e unidades dos produtos e desconta o stock atomicamente por produto.
-        Linhas repetidas do mesmo produto são somadas. Se uma reserva ou gravação falhar,
-        repõe o stock reservado e remove as encomendas parciais.
+        Os nomes, preços e unidades vêm do catálogo. As linhas repetidas do mesmo produto
+        são somadas e as quantidades agregadas têm de ser inteiros seguros. O stock e todas
+        as encomendas são gravados na mesma transação MongoDB, com reserva condicionada ao stock disponível.
+        Se a transação falhar, nenhuma reserva nem encomenda do pedido fica gravada.
+
+        A chave opcional Idempotency-Key é válida por comprador. Para a mesma chave e dados
+        equivalentes, a API devolve 201 e as encomendas já registadas, sem voltar a descontar stock
+        ou a notificar os produtores. A equivalência usa as quantidades agregadas por produto e a
+        entrega normalizada. Usar a mesma chave com dados diferentes ou pedir stock insuficiente devolve 409.
       security: [{ bearerAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/IdempotencyKey' }
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/OrderInput' }
+            example:
+              linhas:
+                - { produto: 66f5a1c2e4b0a1b2c3d4e5f6, quantidade: 2 }
+                - { produto: 66f5a1c2e4b0a1b2c3d4e5f7, quantidade: 1 }
+              entrega: { tipo: entrega, morada: 'Rua de exemplo, Ponte de Lima' }
       responses:
         '201':
-          description: Uma encomenda criada por cada produtor do carrinho
+          description: Uma encomenda por produtor, criada agora ou recuperada pela chave de idempotência
           headers:
             Location:
               description: Coleção de encomendas
@@ -364,12 +547,59 @@ paths:
               schema:
                 type: array
                 minItems: 1
-                items: { $ref: '#/components/schemas/Order' }
-        '400': { $ref: '#/components/responses/DadosInvalidos' }
+                items: { $ref: '#/components/schemas/OrderGravacao' }
+              example:
+                - _id: 66f5a1c2e4b0a1b2c3d4e601
+                  id: 66f5a1c2e4b0a1b2c3d4e601
+                  comprador: 66f5a1c2e4b0a1b2c3d4e600
+                  produtor: 66f5a1c2e4b0a1b2c3d4e611
+                  linhas:
+                    - { _id: 66f5a1c2e4b0a1b2c3d4e621, id: 66f5a1c2e4b0a1b2c3d4e621, produto: 66f5a1c2e4b0a1b2c3d4e5f6, nome: Kiwi Hayward, precoUnit: 2.4, unidade: kg, quantidade: 2 }
+                  estado: pendente
+                  entrega: { tipo: entrega, morada: 'Rua de exemplo, Ponte de Lima' }
+                  origem: loja
+                  total: 4.8
+                - _id: 66f5a1c2e4b0a1b2c3d4e602
+                  id: 66f5a1c2e4b0a1b2c3d4e602
+                  comprador: 66f5a1c2e4b0a1b2c3d4e600
+                  produtor: 66f5a1c2e4b0a1b2c3d4e612
+                  linhas:
+                    - { _id: 66f5a1c2e4b0a1b2c3d4e622, id: 66f5a1c2e4b0a1b2c3d4e622, produto: 66f5a1c2e4b0a1b2c3d4e5f7, nome: Mel, precoUnit: 6.5, unidade: frasco, quantidade: 1 }
+                  estado: pendente
+                  entrega: { tipo: entrega, morada: 'Rua de exemplo, Ponte de Lima' }
+                  origem: loja
+                  total: 6.5
+        '400':
+          description: Corpo, artigos, entrega ou chave de checkout inválidos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              examples:
+                chave:
+                  value: { erro: "Chave de checkout inválida" }
+                quantidade:
+                  value: { erro: "Quantidade inválida" }
+                morada:
+                  value: { erro: "Indique a morada de entrega" }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '403': { $ref: '#/components/responses/SemPermissao' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
-        '409': { $ref: '#/components/responses/Conflito' }
+        '404':
+          description: Produto inexistente ou indisponível para checkout
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Produto não encontrado" }
+        '409':
+          description: Stock insuficiente ou chave reutilizada com dados diferentes
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              examples:
+                stock:
+                  value: { erro: "Stock insuficiente: Kiwi Hayward" }
+                chave:
+                  value: { erro: "Esta chave de checkout já foi utilizada com outros dados" }
+        '413': { $ref: '#/components/responses/CorpoDemasiadoGrande' }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /orders/{id}:
@@ -385,7 +615,12 @@ paths:
         '200': { $ref: '#/components/responses/Encomenda' }
         '400': { $ref: '#/components/responses/DadosInvalidos' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '404':
+          description: Encomenda inexistente ou de outro utilizador
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Encomenda não encontrada" }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /orders/{id}/estado:
@@ -411,12 +646,23 @@ paths:
                 estado: { $ref: '#/components/schemas/EstadoEncomenda' }
             example: { estado: confirmada }
       responses:
-        '200': { $ref: '#/components/responses/Encomenda' }
+        '200': { $ref: '#/components/responses/EncomendaGravada' }
         '400': { $ref: '#/components/responses/DadosInvalidos' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '403': { $ref: '#/components/responses/SemPermissao' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
-        '409': { $ref: '#/components/responses/Conflito' }
+        '404':
+          description: Encomenda inexistente ou de outro produtor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Encomenda não encontrada" }
+        '409':
+          description: O novo estado tem de ser posterior ao atual
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "O estado só pode avançar" }
+        '413': { $ref: '#/components/responses/CorpoDemasiadoGrande' }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /auctions:
@@ -424,7 +670,11 @@ paths:
       tags: [Leilões]
       operationId: listarLeiloes
       summary: Listar leilões
-      description: Ordena por data de fim. O estado é o valor guardado; o ciclo automático de abertura e fecho fica para o Passo 7.
+      description: |
+        Ordena por data de fim e desempata por identificador. Os filtros estado e produtor podem ser combinados.
+        Devolve o estado persistido. Quando o ciclo automático está ativo, abre os leilões agendados
+        na data de início e termina os ativos no fim do prazo. Se houver vencedor, é criada uma
+        encomenda confirmada e o leilão passa a incluir a referência encomenda.
       parameters:
         - { name: estado, in: query, schema: { $ref: '#/components/schemas/EstadoLeilao' } }
         - { $ref: '#/components/parameters/Produtor' }
@@ -435,7 +685,7 @@ paths:
             application/json:
               schema:
                 type: array
-                items: { $ref: '#/components/schemas/Auction' }
+                items: { $ref: '#/components/schemas/AuctionLeitura' }
         '400': { $ref: '#/components/responses/DadosInvalidos' }
         '500': { $ref: '#/components/responses/ErroInterno' }
     post:
@@ -443,10 +693,12 @@ paths:
       operationId: criarLeilao
       summary: Criar um leilão
       description: |
-        Exige papel produtor e registo validado. O produto, se indicado, tem de pertencer ao produtor.
-        Indique duracao (minutos) ou terminaEm; duracao tem prioridade.
+        Exige papel produtor e conta aprovada. O produto, se indicado, tem de pertencer ao produtor.
+        Indique duracao em minutos (mínimo de um) ou terminaEm. A duração tem prioridade.
+        Os valores monetários têm de ser representáveis em cêntimos, com até duas casas decimais.
         O início é agora quando iniciaEm é omitido. O fim tem de ser posterior ao início e ao momento atual.
-        O servidor define o estado e inicia licitacaoAtual.valor com precoBase, sem comprador.
+        O servidor define agendado se o início for futuro e ativo nos outros casos. O valor inicial
+        de licitacaoAtual é precoBase e ainda não existe comprador.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -460,11 +712,39 @@ paths:
             Location: { $ref: '#/components/headers/Location' }
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Auction' }
-        '400': { $ref: '#/components/responses/DadosInvalidos' }
+              schema: { $ref: '#/components/schemas/AuctionGravacao' }
+        '400':
+          description: Dados do leilão, montantes, duração ou datas inválidos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              examples:
+                valores:
+                  value: { erro: "Indique valores monetários válidos, com no máximo duas casas decimais" }
+                duracao:
+                  value: { erro: "Duração inválido" }
+                datas:
+                  value: { erro: "Datas do leilão inválidas" }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
-        '403': { $ref: '#/components/responses/SemPermissao' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '403':
+          description: Papel sem permissão ou conta do produtor por aprovar
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              examples:
+                papel:
+                  value: { erro: "Sem permissão" }
+                pendente:
+                  value: { erro: "O produtor ainda não foi validado" }
+                rejeitado:
+                  value: { erro: "A conta de produtor foi rejeitada" }
+        '404':
+          description: Produto inexistente ou de outro produtor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Produto não encontrado" }
+        '413': { $ref: '#/components/responses/CorpoDemasiadoGrande' }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /auctions/{id}:
@@ -479,9 +759,14 @@ paths:
           description: Leilão e histórico com o nome do comprador e a data de cada licitação
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Auction' }
+              schema: { $ref: '#/components/schemas/AuctionDetalhe' }
         '400': { $ref: '#/components/responses/DadosInvalidos' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '404':
+          description: Leilão inexistente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Leilão não encontrado" }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /auctions/{id}/bids:
@@ -491,36 +776,62 @@ paths:
       tags: [Leilões]
       operationId: listarLicitacoes
       summary: Consultar todo o histórico de licitações de um leilão
-      description: Ordenação da mais recente para a mais antiga. A criação de licitações será feita por Socket.io no Passo 7.
+      description: Da licitação mais recente à mais antiga, com desempate por ID decrescente. As licitações são submetidas por Socket.io.
       responses:
         '200':
-          description: Licitações com o comprador preenchido com id e nome
+          description: Licitações com _id e nome do comprador, ou null se a referência já não existir
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: '#/components/schemas/Bid' }
         '400': { $ref: '#/components/responses/DadosInvalidos' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '404':
+          description: Leilão inexistente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Leilão não encontrado" }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /reviews:
     get:
       tags: [Avaliações]
       operationId: listarAvaliacoes
-      summary: Listar avaliações visíveis
+      summary: Listar avaliações públicas ou consultar as próprias avaliações
+      description: |
+        A consulta pública devolve avaliações visíveis da mais recente para a mais antiga e
+        aceita filtros por produtor e produto. O valor literal true em minhas muda para a
+        consulta privada e exige um JWT de comprador. Nesse modo são devolvidas também as
+        avaliações ocultadas do próprio comprador e os filtros públicos são ignorados.
+      security: [{}, { bearerAuth: [] }]
       parameters:
+        - { name: minhas, in: query, schema: { type: string }, example: 'true' }
         - { $ref: '#/components/parameters/Produtor' }
         - { name: produto, in: query, schema: { $ref: '#/components/schemas/ObjectId' } }
       responses:
         '200':
-          description: Avaliações da mais recente para a mais antiga
+          description: Lista pública de avaliações ou projeção privada das avaliações do comprador
+          headers:
+            Cache-Control:
+              description: Presente na consulta privada
+              schema: { type: string, example: 'private, no-store' }
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: '#/components/schemas/Review' }
+                anyOf:
+                  - type: array
+                    items: { $ref: '#/components/schemas/ReviewPublica' }
+                  - type: array
+                    items: { $ref: '#/components/schemas/ReviewPropria' }
+              examples:
+                proprias:
+                  summary: Consulta com minhas=true
+                  value:
+                    - { _id: 66f5a1c2e4b0a1b2c3d4e5f6, encomenda: 66f5a1c2e4b0a1b2c3d4e5f7, produto: null }
         '400': { $ref: '#/components/responses/DadosInvalidos' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
         '500': { $ref: '#/components/responses/ErroInterno' }
     post:
       tags: [Avaliações]
@@ -542,12 +853,29 @@ paths:
           description: Avaliação criada
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Review' }
+              schema: { $ref: '#/components/schemas/ReviewGravacao' }
         '400': { $ref: '#/components/responses/DadosInvalidos' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '403': { $ref: '#/components/responses/SemPermissao' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
-        '409': { $ref: '#/components/responses/Conflito' }
+        '404':
+          description: Encomenda inexistente ou de outro comprador
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Encomenda não encontrada" }
+        '409':
+          description: Encomenda por entregar ou avaliação já registada para a mesma combinação
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              examples:
+                entrega:
+                  value: { erro: "Só pode avaliar uma encomenda entregue" }
+                duplicada:
+                  value: { erro: "Esta encomenda ou produto já foi avaliado" }
+                concorrencia:
+                  value: { erro: "Já existe um registo com esses dados" }
+        '413': { $ref: '#/components/responses/CorpoDemasiadoGrande' }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /reviews/{id}/denuncia:
@@ -557,13 +885,22 @@ paths:
       tags: [Avaliações]
       operationId: denunciarAvaliacao
       summary: Denunciar uma avaliação visível
-      description: Qualquer utilizador autenticado pode incrementar o contador de denúncias. Não oculta automaticamente a avaliação.
+      description: |
+        Qualquer utilizador autenticado pode denunciar uma avaliação visível.
+        Cada conta incrementa o contador uma vez, mesmo com pedidos concorrentes.
+        Uma repetição devolve 204 e mantém o contador. A ocultação cabe à moderação.
       security: [{ bearerAuth: [] }]
       responses:
-        '204': { $ref: '#/components/responses/SemConteudo' }
+        '204':
+          description: Denúncia registada ou já efetuada pela mesma conta, sem corpo de resposta
         '400': { $ref: '#/components/responses/DadosInvalidos' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '404':
+          description: Avaliação inexistente ou oculta
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Avaliação não encontrada" }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /admin/estatisticas:
@@ -591,16 +928,19 @@ paths:
       tags: [Administração]
       operationId: listarProdutoresPendentes
       summary: Listar produtores por validar
-      description: Exige papel admin. Inclui id, nome, email e perfil do produtor, por ordem de registo.
+      description: |
+        Exige papel admin. Inclui produtores pendentes e registos antigos ainda não
+        validados sem estado explícito. Os rejeitados ficam fora da lista.
+        Ordena por data de registo, da mais antiga para a mais recente.
       security: [{ bearerAuth: [] }]
       responses:
         '200':
-          description: Produtores cujo registo não está validado
+          description: Produtores com estado pendente
           content:
             application/json:
               schema:
                 type: array
-                items: { $ref: '#/components/schemas/User' }
+                items: { $ref: '#/components/schemas/ProdutorAdministrativo' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '403': { $ref: '#/components/responses/SemPermissao' }
         '500': { $ref: '#/components/responses/ErroInterno' }
@@ -611,8 +951,11 @@ paths:
     patch:
       tags: [Administração]
       operationId: validarProdutor
-      summary: Aprovar ou retirar a validação de um produtor
-      description: Exige papel admin. aprovado=true valida o registo; false deixa-o por validar.
+      summary: Aprovar ou rejeitar um produtor pendente
+      description: |
+        Exige papel admin. aprovado=true grava aprovado; aprovado=false grava rejeitado.
+        Só uma decisão altera um produtor pendente, mesmo com pedidos concorrentes.
+        Repetir a decisão já registada devolve 200. Pedir a decisão oposta devolve 409.
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -626,14 +969,26 @@ paths:
             example: { aprovado: true }
       responses:
         '200':
-          description: Produtor com validação atualizada
+          description: Decisão aplicada ou repetição da decisão já registada
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/User' }
+              schema: { $ref: '#/components/schemas/DecisaoProdutor' }
         '400': { $ref: '#/components/responses/DadosInvalidos' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '403': { $ref: '#/components/responses/SemPermissao' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '404':
+          description: O identificador não corresponde a um produtor existente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Produtor não encontrado" }
+        '409':
+          description: Já existe uma decisão diferente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Este produtor já tem uma decisão de validação" }
+        '413': { $ref: '#/components/responses/CorpoDemasiadoGrande' }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
   /admin/reviews/denunciadas:
@@ -650,7 +1005,7 @@ paths:
             application/json:
               schema:
                 type: array
-                items: { $ref: '#/components/schemas/Review' }
+                items: { $ref: '#/components/schemas/ReviewAdministrativa' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '403': { $ref: '#/components/responses/SemPermissao' }
         '500': { $ref: '#/components/responses/ErroInterno' }
@@ -679,11 +1034,22 @@ paths:
           description: Avaliação com visibilidade atualizada
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/Review' }
-        '400': { $ref: '#/components/responses/DadosInvalidos' }
+              schema: { $ref: '#/components/schemas/ReviewGravacao' }
+        '400':
+          description: Identificador, JSON ou valor de visivel inválido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Indique visivel como true ou false" }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '403': { $ref: '#/components/responses/SemPermissao' }
-        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '404':
+          description: Avaliação inexistente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Erro' }
+              example: { erro: "Avaliação não encontrada" }
+        '413': { $ref: '#/components/responses/CorpoDemasiadoGrande' }
         '500': { $ref: '#/components/responses/ErroInterno' }
 
 components:
@@ -714,7 +1080,17 @@ components:
       in: query
       description: Localidade exata do produtor
       schema: { type: string, example: Ponte de Lima }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Chave opcional para repetir o mesmo checkout do comprador.
+      schema: { type: string, pattern: '^[A-Za-z0-9_-]{1,128}$' }
+      example: checkout_2026_001
   headers:
+    CacheControlPrivado:
+      description: Resposta privada sem armazenamento em cache
+      schema: { type: string, example: 'private, no-store' }
     Location:
       description: Caminho relativo do recurso criado, incluindo /api
       schema: { type: string, example: /api/products/66f5a1c2e4b0a1b2c3d4e5f6 }
@@ -724,7 +1100,7 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Erro' }
-          example: { erro: Dados inválidos, detalhes: { categoria: 'Path `categoria` is required.' } }
+          example: { erro: Dados inválidos }
     NaoAutenticado:
       description: JWT em falta, inválido ou expirado; em /auth/eu também ocorre quando a conta já não existe
       content:
@@ -732,23 +1108,11 @@ components:
           schema: { $ref: '#/components/schemas/Erro' }
           example: { erro: Token inválido ou em falta }
     SemPermissao:
-      description: Papel sem permissão ou produtor ainda não validado
+      description: O papel do utilizador não permite esta operação
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Erro' }
           example: { erro: Sem permissão }
-    NaoEncontrado:
-      description: Recurso inexistente, não público ou sem acesso para este utilizador
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Erro' }
-          example: { erro: Recurso não encontrado }
-    Conflito:
-      description: Stock insuficiente, estado sem avanço, avaliação duplicada ou encomenda ainda não entregue
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/Erro' }
-          example: { erro: O estado só pode avançar }
     ErroInterno:
       description: Erro inesperado, sem exposição de detalhes internos
       content:
@@ -756,29 +1120,43 @@ components:
           schema: { $ref: '#/components/schemas/Erro' }
           example: { erro: Erro interno }
     CorpoDemasiadoGrande:
-      description: O corpo JSON excede o limite de 1 MB
+      description: O corpo JSON excede o limite de 1 MiB
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Erro' }
           example: { erro: request entity too large }
     SemConteudo:
       description: Operação concluída, sem corpo de resposta
-    Produto:
-      description: Dados do produto
+    ProdutoDetalhe:
+      description: Produto público com os dados selecionados do produtor
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Product' }
+          schema: { $ref: '#/components/schemas/ProductDetalhe' }
+    ProdutoGravado:
+      description: Produto atualizado, com o produtor identificado por ID
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ProductGravacao' }
     Encomenda:
-      description: Dados da encomenda, incluindo o total calculado
+      description: Encomenda com comprador e produtor preenchidos e total calculado
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/Order' }
+          schema: { $ref: '#/components/schemas/OrderLeitura' }
+    EncomendaGravada:
+      description: Encomenda atualizada, com referências por ID e total calculado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/OrderGravacao' }
 
   schemas:
     ObjectId:
       type: string
       pattern: '^[a-fA-F0-9]{24}$'
       example: 66f5a1c2e4b0a1b2c3d4e5f6
+    ObjectIdNullable:
+      type: string
+      nullable: true
+      pattern: '^[a-fA-F0-9]{24}$'
     Registo:
       type: object
       properties:
@@ -794,6 +1172,9 @@ components:
           type: object
           description: Mensagens de validação por campo, quando disponíveis
           additionalProperties: { type: string }
+    EstadoValidacaoProdutor:
+      type: string
+      enum: [pendente, aprovado, rejeitado]
     PerfilProdutor:
       type: object
       properties:
@@ -805,38 +1186,83 @@ components:
           properties:
             lat: { type: number, example: 41.767 }
             lng: { type: number, example: -8.583 }
-        validado: { type: boolean, readOnly: true }
-    User:
-      type: object
+        validado: { type: boolean, readOnly: true, description: Indicador de aprovação }
+        estadoValidacao: { $ref: '#/components/schemas/EstadoValidacaoProdutor' }
+    PerfilProdutorNormalizado:
       description: |
-        Dados do utilizador sem passwordHash. As consultas públicas e os campos com populate
-        incluem apenas os campos selecionados, como _id, nome e perfil do produtor.
-        O método publico() usa id; as consultas Mongoose usam _id.
+        Para registos antigos sem estado explícito, validado=true é interpretado como
+        aprovado e os restantes como pendente. A normalização na leitura não grava dados.
+      allOf:
+        - { $ref: '#/components/schemas/PerfilProdutor' }
+        - type: object
+          required: [validado, estadoValidacao]
+    PerfilProdutorUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      description: |
+        Os valores são aparados antes da gravação. Nome, exploração e localidade exigem
+        texto não vazio quando enviados. Envie descricao vazia para a limpar.
+      properties:
+        nome: { type: string, maxLength: 100, pattern: '\S' }
+        nomeExploracao: { type: string, pattern: '\S' }
+        localidade: { type: string, pattern: '\S' }
+        descricao: { type: string, maxLength: 1000 }
+    ProdutorPublico:
+      type: object
+      required: [_id, nome, produtor]
+      description: Projeção pública do perfil guardado. Em registos antigos, estadoValidacao pode estar ausente.
       properties:
         _id: { $ref: '#/components/schemas/ObjectId' }
-        id: { $ref: '#/components/schemas/ObjectId' }
-        nome: { type: string, maxLength: 100, example: Horta da Ribeira }
-        email: { type: string, format: email, example: horta@exemplo.pt }
-        papel: { type: string, enum: [comprador, produtor, admin] }
+        nome: { type: string, maxLength: 100 }
         produtor: { $ref: '#/components/schemas/PerfilProdutor' }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
-    UserReference:
-      description: Id nas gravações ou dados selecionados com populate nas consultas; null se a referência já não existir
-      anyOf:
-        - { $ref: '#/components/schemas/ObjectId' }
-        - { $ref: '#/components/schemas/User' }
-        - type: object
-          nullable: true
-          enum: [null]
-    UserPublico:
-      description: |
-        Formato devolvido pelo login e por /auth/eu. Usa id e inclui o perfil produtor apenas
-        para contas com esse papel. Nunca inclui password nem passwordHash.
+    ProdutorAdministrativo:
+      type: object
+      required: [_id, nome, email, produtor]
+      properties:
+        _id: { $ref: '#/components/schemas/ObjectId' }
+        nome: { type: string, maxLength: 100 }
+        email: { type: string, format: email }
+        produtor: { $ref: '#/components/schemas/PerfilProdutorNormalizado' }
+    DecisaoProdutor:
       allOf:
-        - { $ref: '#/components/schemas/User' }
+        - { $ref: '#/components/schemas/ProdutorAdministrativo' }
         - type: object
-          required: [id, nome, email, papel]
+          properties:
+            updatedAt: { type: string, format: date-time }
+    ReferenciaComNome:
+      type: object
+      nullable: true
+      required: [_id, nome]
+      description: Referência preenchida com o nome, ou null se o documento referenciado já não existir.
+      properties:
+        _id: { $ref: '#/components/schemas/ObjectId' }
+        nome: { type: string }
+    ReferenciaProdutorComLocalidade:
+      type: object
+      nullable: true
+      required: [_id, nome]
+      description: Referência preenchida do produtor, ou null se o produtor já não existir.
+      properties:
+        _id: { $ref: '#/components/schemas/ObjectId' }
+        nome: { type: string }
+        produtor:
+          type: object
+          properties:
+            localidade: { type: string }
+    UserPublico:
+      type: object
+      required: [id, nome, email, papel]
+      description: Dados da própria conta, devolvidos pelo login, por /auth/eu e pela atualização do perfil.
+      properties:
+        id: { $ref: '#/components/schemas/ObjectId' }
+        nome: { type: string, maxLength: 100 }
+        email: { type: string, format: email }
+        papel: { type: string, enum: [comprador, produtor, admin] }
+        produtor:
+          description: Perfil presente apenas para contas com papel produtor.
+          allOf:
+            - { $ref: '#/components/schemas/PerfilProdutorNormalizado' }
       example:
         id: 66f5a1c2e4b0a1b2c3d4e5f6
         nome: Horta da Ribeira
@@ -846,6 +1272,7 @@ components:
           nomeExploracao: Horta da Ribeira
           localidade: Ponte de Lima
           validado: true
+          estadoValidacao: aprovado
     RegistoInput:
       type: object
       required: [nome, email, password]
@@ -873,7 +1300,7 @@ components:
     ProdutorRegistoInput:
       type: object
       required: [nomeExploracao, localidade]
-      description: Apenas estes dois campos são copiados no registo; validado é sempre definido como false pelo servidor.
+      description: O servidor usa estes dois campos e define o estado pendente com validado=false.
       properties:
         nomeExploracao: { type: string, minLength: 1, pattern: '\S', example: Horta da Ribeira }
         localidade: { type: string, minLength: 1, pattern: '\S', example: Ponte de Lima }
@@ -881,7 +1308,7 @@ components:
       type: object
       required: [email, password]
       properties:
-        email: { type: string, format: email, minLength: 1, description: Comparado após retirar espaços nas extremidades e converter para minúsculas, example: horta@exemplo.pt }
+        email: { type: string, pattern: '\S', description: Comparado após retirar espaços nas extremidades e converter para minúsculas, example: horta@exemplo.pt }
         password: { type: string, format: password, minLength: 1, writeOnly: true, description: Comparada sem retirar espaços; mais de 72 bytes em UTF-8 devolve 401, example: password123 }
     Sessao:
       type: object
@@ -911,62 +1338,145 @@ components:
         - required: [epocas]
       description: Campos editáveis; os restantes campos enviados são ignorados.
       properties:
-        nome: { type: string, minLength: 1, example: Kiwi Hayward }
-        descricao: { type: string, maxLength: 1000 }
+        nome: { type: string, pattern: '\S', example: Kiwi Hayward }
+        descricao: { type: string, nullable: true, maxLength: 1000 }
         categoria: { $ref: '#/components/schemas/Categoria' }
-        preco: { type: number, minimum: 0, example: 2.4 }
-        unidade: { type: string, default: kg }
+        preco: { $ref: '#/components/schemas/PrecoEmCentimos' }
+        unidade: { type: string, nullable: true, default: kg }
         stock: { type: integer, minimum: 0, maximum: 9007199254740991, default: 0, example: 300 }
         biologico: { type: boolean, default: false }
         epocas:
           type: array
+          nullable: true
           items: { $ref: '#/components/schemas/Epoca' }
     ProductInput:
       allOf:
         - { $ref: '#/components/schemas/ProductUpdate' }
         - type: object
           required: [nome, categoria, preco]
+    PrecoEmCentimos:
+      type: number
+      minimum: 0
+      maximum: 90071992547409.91
+      multipleOf: 0.01
+      description: |
+        Valor em euros com até duas casas decimais. Aceita zero.
+        A API exige que o valor convertido em cêntimos seja um inteiro seguro
+        e que o valor em euros mantenha a precisão às duas casas decimais.
     Product:
       allOf:
         - { $ref: '#/components/schemas/Registo' }
-        - { $ref: '#/components/schemas/ProductInput' }
         - type: object
+          required: [_id, nome, categoria, preco]
           properties:
-            produtor: { $ref: '#/components/schemas/UserReference' }
-            imagemUrl: { type: string, format: uri }
-    ProductReference:
-      description: Id ou resumo do produto com populate; null se o produto já não existir
-      anyOf:
-        - { $ref: '#/components/schemas/ObjectId' }
-        - type: object
-          nullable: true
-          properties:
-            _id: { $ref: '#/components/schemas/ObjectId' }
             nome: { type: string }
-            unidade: { type: string }
+            descricao: { type: string, nullable: true, maxLength: 1000 }
+            categoria: { $ref: '#/components/schemas/Categoria' }
+            preco: { type: number, minimum: 0 }
+            unidade: { type: string, nullable: true }
+            stock: { type: integer, nullable: true, minimum: 0, maximum: 9007199254740991 }
+            biologico: { type: boolean }
+            epocas:
+              type: array
+              nullable: true
+              items: { $ref: '#/components/schemas/Epoca' }
             imagemUrl: { type: string, format: uri }
+    ProductGravacao:
+      allOf:
+        - { $ref: '#/components/schemas/Product' }
+        - type: object
+          required: [produtor]
+          properties:
+            produtor: { $ref: '#/components/schemas/ObjectId' }
+    ProductLista:
+      allOf:
+        - { $ref: '#/components/schemas/Product' }
+        - type: object
+          required: [produtor]
+          properties:
+            produtor:
+              type: object
+              nullable: true
+              required: [_id, nome]
+              properties:
+                _id: { $ref: '#/components/schemas/ObjectId' }
+                nome: { type: string }
+                produtor:
+                  type: object
+                  properties:
+                    localidade: { type: string }
+                    nomeExploracao: { type: string }
+    ProductDetalhe:
+      allOf:
+        - { $ref: '#/components/schemas/Product' }
+        - type: object
+          required: [produtor]
+          properties:
+            produtor:
+              type: object
+              required: [_id, nome, produtor]
+              properties:
+                _id: { $ref: '#/components/schemas/ObjectId' }
+                nome: { type: string }
+                produtor:
+                  type: object
+                  required: [validado]
+                  properties:
+                    localidade: { type: string }
+                    nomeExploracao: { type: string }
+                    validado: { type: boolean, enum: [true] }
+    ProductDeProdutor:
+      allOf:
+        - { $ref: '#/components/schemas/Product' }
+        - type: object
+          required: [produtor]
+          properties:
+            produtor: { $ref: '#/components/schemas/ReferenciaProdutorComLocalidade' }
+    ProdutoResumoLeilao:
+      type: object
+      nullable: true
+      required: [_id, nome]
+      properties:
+        _id: { $ref: '#/components/schemas/ObjectId' }
+        nome: { type: string }
+        unidade: { type: string, nullable: true }
+        imagemUrl: { type: string, format: uri }
     PaginaProdutor:
       type: object
       required: [produtor, produtos, avaliacaoMedia, totalAvaliacoes, avaliacoes]
       properties:
-        produtor: { $ref: '#/components/schemas/User' }
+        produtor: { $ref: '#/components/schemas/ProdutorPublico' }
         produtos:
           type: array
-          items: { $ref: '#/components/schemas/Product' }
+          items: { $ref: '#/components/schemas/ProductDeProdutor' }
         avaliacaoMedia: { type: number, nullable: true, minimum: 1, maximum: 5, example: 4.5 }
         totalAvaliacoes: { type: integer, minimum: 0 }
         avaliacoes:
           type: array
           maxItems: 20
-          items: { $ref: '#/components/schemas/Review' }
+          items: { $ref: '#/components/schemas/ReviewPaginaProdutor' }
     EstadoEncomenda:
       type: string
       enum: [pendente, confirmada, pronta, entregue]
-    Entrega:
+    EntregaInput:
       type: object
-      description: A morada não vazia é obrigatória quando tipo=entrega.
+      description: Por omissão usa levantamento. Uma morada de levantamento, se enviada, é descartada.
       properties:
         tipo: { type: string, enum: [levantamento, entrega], default: levantamento }
+        morada: { type: string, example: 'Rua de exemplo, Ponte de Lima' }
+      oneOf:
+        - properties:
+            tipo: { type: string, enum: [levantamento] }
+        - required: [tipo, morada]
+          properties:
+            tipo: { type: string, enum: [entrega] }
+            morada: { type: string, pattern: '\S' }
+    Entrega:
+      type: object
+      required: [tipo]
+      description: Na recolha, a morada fica vazia no checkout e pode estar ausente nas encomendas de leilão.
+      properties:
+        tipo: { type: string, enum: [levantamento, entrega] }
         morada: { type: string, example: 'Rua de exemplo, Ponte de Lima' }
     OrderLineInput:
       type: object
@@ -982,35 +1492,51 @@ components:
           type: array
           minItems: 1
           items: { $ref: '#/components/schemas/OrderLineInput' }
-        entrega: { $ref: '#/components/schemas/Entrega' }
+        entrega: { $ref: '#/components/schemas/EntregaInput' }
     OrderLine:
       type: object
-      required: [nome, precoUnit, quantidade]
-      description: Cópia dos dados no momento da compra; permanece válida se o produto for alterado ou removido.
+      required: [_id, id, nome, precoUnit, quantidade]
+      description: Cópia dos dados no momento da compra. Nas encomendas de leilão, a linha representa um lote e o produto pode estar ausente.
       properties:
         _id: { $ref: '#/components/schemas/ObjectId' }
+        id: { $ref: '#/components/schemas/ObjectId' }
         produto: { $ref: '#/components/schemas/ObjectId' }
         nome: { type: string }
         precoUnit: { type: number, minimum: 0 }
-        unidade: { type: string }
+        unidade: { type: string, nullable: true }
         quantidade: { type: integer, minimum: 1, maximum: 9007199254740991 }
     Order:
       allOf:
         - { $ref: '#/components/schemas/Registo' }
         - type: object
+          required: [_id, id, linhas, estado, entrega, origem, total]
           properties:
             id: { $ref: '#/components/schemas/ObjectId' }
-            comprador: { $ref: '#/components/schemas/UserReference' }
-            produtor: { $ref: '#/components/schemas/UserReference' }
             linhas:
               type: array
               minItems: 1
               items: { $ref: '#/components/schemas/OrderLine' }
             estado: { $ref: '#/components/schemas/EstadoEncomenda' }
             entrega: { $ref: '#/components/schemas/Entrega' }
-            origem: { type: string, enum: [loja, leilao], default: loja }
+            origem: { type: string, enum: [loja, leilao], description: A origem leilao é criada automaticamente para o vencedor }
             leilao: { $ref: '#/components/schemas/ObjectId' }
-            total: { type: number, minimum: 0, readOnly: true, description: 'Soma de precoUnit vezes quantidade, arredondada a duas casas decimais' }
+            total: { type: number, minimum: 0, readOnly: true, description: Soma de precoUnit vezes quantidade arredondada a duas casas decimais }
+    OrderLeitura:
+      allOf:
+        - { $ref: '#/components/schemas/Order' }
+        - type: object
+          required: [comprador, produtor]
+          properties:
+            comprador: { $ref: '#/components/schemas/ReferenciaComNome' }
+            produtor: { $ref: '#/components/schemas/ReferenciaProdutorComLocalidade' }
+    OrderGravacao:
+      allOf:
+        - { $ref: '#/components/schemas/Order' }
+        - type: object
+          required: [comprador, produtor]
+          properties:
+            comprador: { $ref: '#/components/schemas/ObjectId' }
+            produtor: { $ref: '#/components/schemas/ObjectId' }
     EstadoLeilao:
       type: string
       enum: [agendado, ativo, terminado]
@@ -1021,33 +1547,40 @@ components:
         - required: [duracao]
         - required: [terminaEm]
       properties:
-        produto: { $ref: '#/components/schemas/ObjectId' }
-        lote: { type: string, minLength: 1, maxLength: 150, example: '200 kg de kiwi Hayward, calibre A' }
-        descricao: { type: string, maxLength: 1000 }
-        quantidade: { type: string, example: 200 kg }
-        precoBase: { type: number, minimum: 0, example: 200 }
-        incremento: { type: number, minimum: 0.01, example: 5 }
+        produto: { $ref: '#/components/schemas/ObjectIdNullable' }
+        lote: { type: string, pattern: '\S', maxLength: 150, example: '200 kg de kiwi Hayward, calibre A' }
+        descricao: { type: string, nullable: true, maxLength: 1000 }
+        quantidade: { type: string, nullable: true, example: 200 kg }
+        precoBase:
+          allOf:
+            - { $ref: '#/components/schemas/PrecoEmCentimos' }
+          example: 200
+        incremento:
+          allOf:
+            - { $ref: '#/components/schemas/PrecoEmCentimos' }
+            - { type: number, minimum: 0.01 }
+          example: 5
         iniciaEm: { type: string, format: date-time, description: Omitir para começar agora }
         terminaEm: { type: string, format: date-time, description: Obrigatório se duracao for omitida }
         duracao:
           description: Duração em minutos, também aceite como texto numérico; tem prioridade sobre terminaEm
           anyOf:
             - { type: number, minimum: 1, example: 30 }
-            - { type: string, pattern: '^\s*\d+(\.\d+)?\s*$', example: '30' }
+            - { type: string, minLength: 1, description: Texto convertível em número finito igual ou superior a 1, example: '30' }
     Auction:
       allOf:
         - { $ref: '#/components/schemas/Registo' }
         - type: object
+          required: [_id, lote, precoBase, incremento, numLicitacoes, iniciaEm, terminaEm, estado]
           properties:
-            produtor: { $ref: '#/components/schemas/UserReference' }
-            produto: { $ref: '#/components/schemas/ProductReference' }
             lote: { type: string, maxLength: 150 }
-            descricao: { type: string, maxLength: 1000 }
-            quantidade: { type: string }
+            descricao: { type: string, nullable: true, maxLength: 1000 }
+            quantidade: { type: string, nullable: true }
             precoBase: { type: number, minimum: 0 }
             incremento: { type: number, minimum: 0.01 }
             licitacaoAtual:
               type: object
+              description: Começa com o preço base. Os dados do comprador e a data surgem após uma licitação aceite.
               properties:
                 valor: { type: number, minimum: 0 }
                 comprador: { $ref: '#/components/schemas/ObjectId' }
@@ -1057,26 +1590,61 @@ components:
             iniciaEm: { type: string, format: date-time }
             terminaEm: { type: string, format: date-time }
             estado: { $ref: '#/components/schemas/EstadoLeilao' }
-            encomenda: { $ref: '#/components/schemas/ObjectId' }
+            encomenda:
+              description: ID da encomenda confirmada do vencedor, quando criada. A consulta da encomenda exige titularidade.
+              allOf:
+                - { $ref: '#/components/schemas/ObjectId' }
+    AuctionGravacao:
+      allOf:
+        - { $ref: '#/components/schemas/Auction' }
+        - type: object
+          required: [produtor]
+          properties:
+            produtor: { $ref: '#/components/schemas/ObjectId' }
+            produto: { $ref: '#/components/schemas/ObjectIdNullable' }
+    AuctionLeitura:
+      allOf:
+        - { $ref: '#/components/schemas/Auction' }
+        - type: object
+          required: [produtor]
+          properties:
+            produtor: { $ref: '#/components/schemas/ReferenciaProdutorComLocalidade' }
+            produto: { $ref: '#/components/schemas/ProdutoResumoLeilao' }
+    AuctionDetalhe:
+      allOf:
+        - { $ref: '#/components/schemas/AuctionLeitura' }
+        - type: object
+          required: [historico]
+          properties:
             historico:
               type: array
               maxItems: 20
-              description: Presente no detalhe do leilão
-              items: { $ref: '#/components/schemas/Bid' }
-    Bid:
+              description: Licitações mais recentes, com desempate por ID decrescente.
+              items: { $ref: '#/components/schemas/BidHistorico' }
+    BidBase:
       allOf:
         - { $ref: '#/components/schemas/Registo' }
         - type: object
+          required: [_id, leilao, valor]
           properties:
             leilao: { $ref: '#/components/schemas/ObjectId' }
-            comprador:
-              description: Id, objeto com id/nome no histórico completo, ou nome no detalhe do leilão
-              anyOf:
-                - { type: string }
-                - { $ref: '#/components/schemas/User' }
-            nome: { type: string }
+            nome: { type: string, description: Nome guardado no momento da licitação }
             valor: { type: number, minimum: 0 }
-            data: { type: string, format: date-time, description: Cópia de createdAt no detalhe do leilão }
+    Bid:
+      allOf:
+        - { $ref: '#/components/schemas/BidBase' }
+        - type: object
+          required: [comprador]
+          properties:
+            comprador: { $ref: '#/components/schemas/ReferenciaComNome' }
+    BidHistorico:
+      allOf:
+        - { $ref: '#/components/schemas/BidBase' }
+        - type: object
+          required: [comprador, data]
+          properties:
+            comprador: { type: string, description: Nome atual do comprador ou Comprador se a referência já não existir }
+            data: { type: string, format: date-time, description: Cópia de createdAt }
     ReviewInput:
       type: object
       required: [encomenda, classificacao]
@@ -1089,20 +1657,59 @@ components:
       allOf:
         - { $ref: '#/components/schemas/Registo' }
         - type: object
+          required: [_id, encomenda, classificacao, denuncias, visivel]
           properties:
-            autor:
-              description: Id, objeto com id/nome, ou nome na página pública do produtor
-              anyOf:
-                - { type: string }
-                - { $ref: '#/components/schemas/User' }
-            produtor: { $ref: '#/components/schemas/UserReference' }
-            produto: { $ref: '#/components/schemas/ProductReference' }
             encomenda: { $ref: '#/components/schemas/ObjectId' }
             classificacao: { type: integer, minimum: 1, maximum: 5 }
             comentario: { type: string, maxLength: 1000 }
-            texto: { type: string, description: Cópia de comentario na página pública do produtor }
             denuncias: { type: integer, minimum: 0 }
             visivel: { type: boolean }
+    ReviewGravacao:
+      allOf:
+        - { $ref: '#/components/schemas/Review' }
+        - type: object
+          required: [autor, produtor]
+          properties:
+            autor: { $ref: '#/components/schemas/ObjectId' }
+            produtor: { $ref: '#/components/schemas/ObjectId' }
+            produto: { $ref: '#/components/schemas/ObjectIdNullable' }
+    ReviewAdministrativa:
+      allOf:
+        - { $ref: '#/components/schemas/Review' }
+        - type: object
+          required: [autor, produtor]
+          properties:
+            autor: { $ref: '#/components/schemas/ReferenciaComNome' }
+            produtor: { $ref: '#/components/schemas/ReferenciaComNome' }
+            produto: { $ref: '#/components/schemas/ObjectIdNullable' }
+    ReviewPublica:
+      allOf:
+        - { $ref: '#/components/schemas/Review' }
+        - type: object
+          required: [autor, produtor]
+          properties:
+            autor: { $ref: '#/components/schemas/ReferenciaComNome' }
+            produtor: { $ref: '#/components/schemas/ReferenciaComNome' }
+            produto: { $ref: '#/components/schemas/ReferenciaComNome' }
+    ReviewPaginaProdutor:
+      allOf:
+        - { $ref: '#/components/schemas/Review' }
+        - type: object
+          required: [autor, produtor]
+          properties:
+            autor: { type: string, description: Nome do autor ou Comprador se a referência já não existir }
+            produtor: { $ref: '#/components/schemas/ObjectId' }
+            produto: { $ref: '#/components/schemas/ObjectIdNullable' }
+            texto: { type: string, description: Cópia de comentario quando presente }
+            denunciadaPorMim: { type: boolean, description: Presente apenas quando foi apresentado um JWT válido }
+    ReviewPropria:
+      type: object
+      additionalProperties: false
+      required: [_id, encomenda]
+      properties:
+        _id: { $ref: '#/components/schemas/ObjectId' }
+        encomenda: { $ref: '#/components/schemas/ObjectId' }
+        produto: { $ref: '#/components/schemas/ObjectIdNullable' }
     Estatisticas:
       type: object
       required: [utilizadores, produtores, encomendasHoje, leiloesAtivos]
