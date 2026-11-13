@@ -2,15 +2,16 @@
 export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export async function api(caminho, { metodo = 'GET', corpo, token, signal, chaveIdempotencia } = {}) {
+  const multipart = corpo instanceof FormData;
   const resposta = await fetch(`${API_URL}/api${caminho}`, {
     method: metodo,
     signal,
     headers: {
-      ...(corpo ? { 'Content-Type': 'application/json' } : {}),
+      ...(corpo && !multipart ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(chaveIdempotencia ? { 'Idempotency-Key': chaveIdempotencia } : {})
     },
-    body: corpo ? JSON.stringify(corpo) : undefined
+    body: multipart ? corpo : corpo ? JSON.stringify(corpo) : undefined
   });
   if (resposta.status === 204) return null;
   const dados = await resposta.json().catch(() => null);
