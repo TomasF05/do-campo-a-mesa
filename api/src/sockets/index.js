@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const { isObjectIdOrHexString } = require('mongoose');
 const registarLeiloes = require('./leiloes');
 
-module.exports = (io) => {
+module.exports = (io, acompanhar = (_socket, handler) => handler) => {
   io.use((socket, next) => {
     try {
       const u = jwt.verify(socket.handshake.auth?.token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
@@ -48,7 +48,7 @@ module.exports = (io) => {
       next(); // O Socket.io só entrega o evento se a ligação continuar aberta.
     });
 
-    registarLeiloes(io, socket);
+    registarLeiloes(io, socket, (handler) => acompanhar(socket, handler));
     vigiarExpiracao();
   });
 };
